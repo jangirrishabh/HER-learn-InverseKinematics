@@ -1,0 +1,1 @@
+from gym_gazebo.envs.barret_wam.gazebo_wam_empty import GazeboWAMemptyEnv

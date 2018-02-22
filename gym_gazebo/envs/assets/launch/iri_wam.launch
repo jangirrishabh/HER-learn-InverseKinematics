@@ -1,0 +1,54 @@
+<launch>
+
+  <arg name="ROBOT"        default="iri_wam"/>
+  <arg name="IK"           default="true"/>
+
+  <!-- these are the arguments you can pass this launch file, for example paused:=true -->
+  <arg name="world"        default="empty"/>
+  <arg name="use_sim_time" default="true"/>
+  <arg name="gui"          default="true"/>
+  <arg name="paused"       value="true"/>
+  <arg name="headless"     default="false"/>
+  <arg name="debug"        default="false"/>
+
+  <!-- We resume the logic in empty_world.launch, changing only the name of the world to be launched -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name" value="$(find iri_wam_gazebo)/worlds/iri_wam_$(arg world).world"/>
+    <arg name="debug" value="$(arg debug)" />
+    <arg name="gui" value="$(arg gui)" />
+    <arg name="paused" value="$(arg paused)"/>
+    <arg name="use_sim_time" value="$(arg use_sim_time)"/>
+    <arg name="headless" value="$(arg headless)"/>
+  </include>
+
+  <param name="use_gui" value="$(arg gui)" />
+
+  <!-- Load the URDF into the ROS Parameter Server -->
+  <param name="robot_description"
+         command="$(find xacro)/xacro --inorder '$(find iri_wam_description)/xacro/iri_wam.urdf.xacro'" />
+
+  <!-- Run a python script to the send a service call to gazebo_ros to spawn a URDF robot -->
+  <node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen"
+        args="-urdf -model iri_wam -param robot_description"/>
+
+  <!-- ros_control iri_wam launch file -->
+  <include file="$(find iri_wam_gazebo)/launch/iri_wam_control.launch" />
+
+  <group ns="$(arg ROBOT)">
+    <!-- Publish Robot Inverse Kinematics -->
+    <include file="$(find iri_wam_ik)/launch/iri_wam_ik.launch" if="$(arg IK)" >
+      <arg name="ROBOT" value="$(arg ROBOT)" />
+    </include>
+
+    <!-- Publish TCP Robot Inverse Kinematics -->
+    <node name="$(arg ROBOT)_tcp_ik" pkg="iri_wam_tcp_ik" type="iri_wam_tcp_ik" if="$(arg IK)" >
+      <param name="robot_base" type="str" value="/$(arg ROBOT)_link_base" />
+      <!-- Here, robot_tcp and tool_tcp are the same because if not the algorithm would take 
+           the link_7 to link_tcp transformation twice -->
+      <param name="robot_tcp" type="str" value="/$(arg ROBOT)_link_tcp" />
+      <param name="tool_tcp"  type="str" value="/$(arg ROBOT)_link_tcp" />
+      <remap from="$(arg ROBOT)_tcp_ik/wamik" to="$(arg ROBOT)_ik/get_wam_ik" />
+    </node>
+  </group>
+</launch>
+

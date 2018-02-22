@@ -17,7 +17,7 @@ class GazeboEnv(gym.Env):
 
     def __init__(self, launchfile):
 
-        port = os.environ["ROS_PORT_SIM"]
+        port = os.environ["ROS_PORT_SIM"] # export ROS_PORT_SIM=11311 default 
         #start roscore
         subprocess.Popen(["roscore", "-p", port])
         time.sleep(1)
