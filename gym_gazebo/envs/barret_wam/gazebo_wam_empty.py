@@ -20,22 +20,27 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         # Launch the simulation with the given launchfile name
         gazebo_env.GazeboEnv.__init__(self, "iri_wam.launch")
         #self.vel_pub = rospy.Publisher('/mobile_base/commands/velocity', Twist, queue_size=5)
-        self.pub1 = rospy.Publisher('/iri_wam/joint1_position_controller/command', Float64, queue_size=5)
-        self.pub2 = rospy.Publisher('/iri_wam/joint2_position_controller/command', Float64, queue_size=5)
-        self.pub3 = rospy.Publisher('/iri_wam/joint3_position_controller/command', Float64, queue_size=5)
-        self.pub4 = rospy.Publisher('/iri_wam/joint4_position_controller/command', Float64, queue_size=5)
-        self.pub5 = rospy.Publisher('/iri_wam/joint5_position_controller/command', Float64, queue_size=5)
-        self.pub6 = rospy.Publisher('/iri_wam/joint6_position_controller/command', Float64, queue_size=5)
-        self.pub7 = rospy.Publisher('/iri_wam/joint7_position_controller/command', Float64, queue_size=5) # discretely publishing motor actions for now
+        self.publishers = ['pub1', 'pub2', 'pub3', 'pub4', 'pub5', 'pub6', 'pub7']
+
+        self.publishers[0] = rospy.Publisher('/iri_wam/joint1_position_controller/command', Float64, queue_size=5)
+        self.publishers[1] = rospy.Publisher('/iri_wam/joint2_position_controller/command', Float64, queue_size=5)
+        self.publishers[2] = rospy.Publisher('/iri_wam/joint3_position_controller/command', Float64, queue_size=5)
+        self.publishers[3] = rospy.Publisher('/iri_wam/joint4_position_controller/command', Float64, queue_size=5)
+        self.publishers[4] = rospy.Publisher('/iri_wam/joint5_position_controller/command', Float64, queue_size=5)
+        self.publishers[5] = rospy.Publisher('/iri_wam/joint6_position_controller/command', Float64, queue_size=5)
+        self.publishers[6] = rospy.Publisher('/iri_wam/joint7_position_controller/command', Float64, queue_size=5) # discretely publishing motor actions for now
         
         self.unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
         self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
         self.reset_proxy = rospy.ServiceProxy('/gazebo/reset_simulation', Empty)
+        self.minDisplacement = 0.09
         #self.change_controller = rospy.ServiceProxy('/iri_wam/controller_manager/switch_controller', SwitchController)
 
 
-        self.action_space = spaces.Discrete(14) #discretizing action commands for now
-        self.observation_space = spaces.Discrete(7)
+        high = np.array([10, 10, 10, 10, 10, 10, 10])
+
+        self.action_space = spaces.MultiBinary(7) #discretizing action commands for now
+        self.observation_space = spaces.Box(-high, high)
         self.reward_range = (-np.inf, np.inf)
 
         self._seed()
@@ -59,6 +64,11 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
     #             done = True
     #     return discretized_ranges,done
 
+
+
+        
+
+
     def _seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
@@ -67,8 +77,8 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
 
         lastObs = np.array(self.lastState)
-        lastObsForward = (lastObs + 0.01)
-        lastObsBackward = (lastObs - 0.01)
+        lastObsForward = (lastObs + self.minDisplacement)
+        lastObsBackward = (lastObs - self.minDisplacement)
 
 
         rospy.wait_for_service('/gazebo/unpause_physics')
@@ -77,20 +87,12 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         except (rospy.ServiceException) as e:
             print ("/gazebo/unpause_physics service call failed")
 
-        if action == 0: self.pub1.publish(lastObsForward[0])
-        elif action == 1: self.pub2.publish(lastObsForward[1])
-        elif action == 2: self.pub3.publish(lastObsForward[2])
-        elif action == 3: self.pub4.publish(lastObsForward[3])
-        elif action == 4: self.pub5.publish(lastObsForward[4])
-        elif action == 5: self.pub6.publish(lastObsForward[5])
-        elif action == 6: self.pub7.publish(lastObsForward[6])
-        elif action == 7: self.pub1.publish(lastObsBackward[0])
-        elif action == 8: self.pub2.publish(lastObsBackward[1])
-        elif action == 9: self.pub3.publish(lastObsBackward[2])
-        elif action == 10: self.pub4.publish(lastObsBackward[3])
-        elif action == 11: self.pub5.publish(lastObsBackward[4])
-        elif action == 12: self.pub6.publish(lastObsBackward[5])
-        elif action == 13: self.pub7.publish(lastObsBackward[6])
+        jointNumber = action[0]
+        jointAction = action[1]
+
+
+        if jointAction == 0: self.publishers[jointNumber].publish(lastObsForward[jointNumber])
+        elif jointAction == 1: self.publishers[jointNumber].publish(lastObsBackward[jointNumber])
 
         
 
@@ -124,6 +126,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
         return state, reward, done, {}
 
+
     def _reset(self):
 
         # Resets the state of the environment and returns an initial observation.
@@ -145,6 +148,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
             self.unpause()
         except (rospy.ServiceException) as e:
             print ("/gazebo/unpause_physics service call failed")
+
 
         rospy.wait_for_service('/iri_wam/controller_manager/switch_controller')
         try:
