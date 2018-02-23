@@ -10,9 +10,12 @@ from gym import utils, spaces
 from gym_gazebo.envs import gazebo_env
 from std_srvs.srv import Empty
 from sensor_msgs.msg import JointState
+from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Float64
 from controller_manager_msgs.srv import SwitchController
 from gym.utils import seeding
+from iri_common_drivers_msgs.srv import QueryInverseKinematics
+
 
 class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
@@ -34,16 +37,22 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
         self.reset_proxy = rospy.ServiceProxy('/gazebo/reset_simulation', Empty)
         self.minDisplacement = 0.09
+        self.baseFrame = 'iri_wam_link_base'
         #self.change_controller = rospy.ServiceProxy('/iri_wam/controller_manager/switch_controller', SwitchController)
 
 
-        high = np.array([10, 10, 10, 10, 10, 10, 10])
+        self.high = np.array([2.6, 2, 2.8, 3.1, 1.24, 1.57, 3])
+        self.low = np.array([-2.6, -2, -2.8, -0.9, -4.76, -1.57, -3])
+
+        self.envelopeAugmented = self.high - self.low 
+
 
         self.action_space = spaces.MultiBinary(7) #discretizing action commands for now
-        self.observation_space = spaces.Box(-high, high)
+        self.observation_space = spaces.Box(self.low, self.high)
         self.reward_range = (-np.inf, np.inf)
 
         self._seed()
+        #self.desiredGoal = None
 
         self.lastState = None
 
@@ -65,8 +74,70 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
     #     return discretized_ranges,done
 
 
+    def getRandomGoal(self):  #sample from reachable positions
+        frame_ID = self.baseFrame
+        # x = random.uniform(-1, 1)
+        # y = random.uniform(-1, 1)
+        # z = random.uniform(0, 1)
+
+        # px = random.uniform(0, 1)
+        # py = random.uniform(0, 1)
+        # pz = random.uniform(0, 1)
+        # pw = random.uniform(0, 1)
+        tempPosition = []
+        for joint in range(7):
+            tempPosition.append(random.uniform(self.low[joint], self.high[joint]))
+
+        #tempPose = PoseStamped(frame_id = frame_ID , position, orientation)
+        #self.desiredGoal = tempPosition
+        return tempPosition
 
         
+    # def getInverseKinematics(self, goalPose): #get joint angles for reaching the goal position
+    #     goalPoseStamped = goalPose
+    #     rospy.wait_for_service('/iri_wam/iri_wam_ik/get_wam_ik')
+    #     try:
+    #         getIK = rospy.ServiceProxy('/iri_wam/iri_wam_ik/get_wam_ik', QueryInverseKinematics)
+    #         jointPositionsReturned = getIK(goalPoseStamped)
+    #         return jointPositionsReturned.position
+    #     except (rospy.ServiceException) as e:
+    #         print ("Service call failed: %s"%e)
+
+    # def getForwardKinematics(self, goalPose): #get joint angles for reaching the goal position
+    #     goalPoseStamped = goalPose
+    #     rospy.wait_for_service('/iri_wam/iri_wam_ik/get_wam_fk')
+    #     try:
+    #         getIK = rospy.ServiceProxy('/iri_wam/iri_wam_ik/get_wam_fk', QueryInverseKinematics)
+    #         jointPositionsReturned = getIK(goalPoseStamped)
+    #         return jointPositionsReturned.position
+    #     except (rospy.ServiceException) as e:
+    #         print ("Service call failed: %s"%e)
+
+
+    def goToGoal(self, goalPosition):
+        desiredJointPositions = goalPosition
+        #desiredJointPositions = self.desiredGoal
+        currentJointPositions = self.lastState
+        desiredJointPositionsAugmented = desiredJointPositions - self.low
+        currentJointPositionsaugmented = currentJointPositions - self.low
+        for joint in range(7):
+            difference = currentJointPositionsaugmented[joint] - desiredJointPositionsAugmented[joint]
+            while np.absolute(difference) > self.minDisplacement:
+                if difference > 0: #take negative action, backward
+                    action = [joint, 1]  
+                elif difference < 0: #take positive action, forward
+                    action = [joint, 0]
+                else: #take no action
+                    None
+                observation, reward, done, info = self.step(action)
+                currentJointPositions = self.lastState
+                currentJointPositionsaugmented = currentJointPositions - self.low
+                difference = currentJointPositionsaugmented[joint] - desiredJointPositionsAugmented[joint]
+            if np.absolute(difference) <= self.minDisplacement:
+                print ("Goal position reached for joint number ", joint)
+
+    
+
 
 
     def _seed(self, seed=None):
