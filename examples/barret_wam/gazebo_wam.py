@@ -11,17 +11,17 @@ print("Reset!")
 # Check the env limits:
 #print(env.action_space) # Box(3,)
 #print(env.observation_space) # Box(9,)
-time.sleep(15)
+time.sleep(5)
 env.reset()
 print("Reset!")
 
 for i in range(100):
-    env.reset()
+    obs = env.reset()
     print("Reset!")
     randomGoalPosition = env.getRandomGoal()
     print("New Goal received!")
-    env.goToGoal(randomGoalPosition)
-    time.sleep(15)
+    env.goToGoal(randomGoalPosition, obs)
+    #time.sleep(5)
     # for x in range(1000):
     #     # env.render()
     #     #action = [randint(0, 6), randint(0, 1)]

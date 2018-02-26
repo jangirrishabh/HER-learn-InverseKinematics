@@ -15,6 +15,7 @@ from std_msgs.msg import Float64
 from controller_manager_msgs.srv import SwitchController
 from gym.utils import seeding
 from iri_common_drivers_msgs.srv import QueryInverseKinematics
+from iri_common_drivers_msgs.srv import QueryForwardKinematics
 
 
 class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
@@ -38,11 +39,10 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.reset_proxy = rospy.ServiceProxy('/gazebo/reset_simulation', Empty)
         self.minDisplacement = 0.09
         self.baseFrame = 'iri_wam_link_base'
-        #self.change_controller = rospy.ServiceProxy('/iri_wam/controller_manager/switch_controller', SwitchController)
 
-
-        self.high = np.array([2.6, 2, 2.8, 3.1, 1.24, 1.57, 3])
-        self.low = np.array([-2.6, -2, -2.8, -0.9, -4.76, -1.57, -3])
+        self.home = np.zeros(7)
+        self.high = np.array([2.5, 1.9, 2.7, 3.0, 1.14, 1.47, 3])
+        self.low = np.array([-2.5, -1.9, -2.7, -0.8, -4.66, -1.47, -3])
 
         self.envelopeAugmented = self.high - self.low 
 
@@ -52,41 +52,20 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.reward_range = (-np.inf, np.inf)
 
         self._seed()
-        #self.desiredGoal = None
-
-        self.lastState = None
-
-    # def discretize_observation(self,data,new_ranges): #observatiopn would be the joint Space completely, so no need to do stuff
-    #     discretized_ranges = []
-    #     min_range = 0.2
-    #     done = False
-    #     mod = len(data.ranges)/new_ranges
-    #     for i, item in enumerate(data.ranges):
-    #         if (i%mod==0):
-    #             if data.ranges[i] == float ('Inf'):
-    #                 discretized_ranges.append(6)
-    #             elif np.isnan(data.ranges[i]):
-    #                 discretized_ranges.append(0)
-    #             else:
-    #                 discretized_ranges.append(int(data.ranges[i]))
-    #         if (min_range > data.ranges[i] > 0):
-    #             done = True
-    #     return discretized_ranges,done
+        #self.lastState = None
 
 
     def getRandomGoal(self):  #sample from reachable positions
         frame_ID = self.baseFrame
-        # x = random.uniform(-1, 1)
-        # y = random.uniform(-1, 1)
-        # z = random.uniform(0, 1)
-
-        # px = random.uniform(0, 1)
-        # py = random.uniform(0, 1)
-        # pz = random.uniform(0, 1)
-        # pw = random.uniform(0, 1)
         tempPosition = []
         for joint in range(7):
             tempPosition.append(random.uniform(self.low[joint], self.high[joint]))
+            print ("GOAL position sampled for joint : ", joint, " is ", tempPosition[joint])
+
+        tempJointState = JointState()
+        tempJointState.header.frame_id = self.baseFrame
+        tempJointState.position = tempPosition
+        print (self.getForwardKinematics(tempJointState))
 
         #tempPose = PoseStamped(frame_id = frame_ID , position, orientation)
         #self.desiredGoal = tempPosition
@@ -103,37 +82,33 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
     #     except (rospy.ServiceException) as e:
     #         print ("Service call failed: %s"%e)
 
-    # def getForwardKinematics(self, goalPose): #get joint angles for reaching the goal position
-    #     goalPoseStamped = goalPose
-    #     rospy.wait_for_service('/iri_wam/iri_wam_ik/get_wam_fk')
-    #     try:
-    #         getIK = rospy.ServiceProxy('/iri_wam/iri_wam_ik/get_wam_fk', QueryInverseKinematics)
-    #         jointPositionsReturned = getIK(goalPoseStamped)
-    #         return jointPositionsReturned.position
-    #     except (rospy.ServiceException) as e:
-    #         print ("Service call failed: %s"%e)
+    def getForwardKinematics(self, goalPosition): #get catesian coordinates for joint Positions
+
+        rospy.wait_for_service('/iri_wam/iri_wam_ik/get_wam_fk')
+        try:
+            getFK = rospy.ServiceProxy('/iri_wam/iri_wam_ik/get_wam_fk', QueryForwardKinematics)
+            jointPoseReturned = getFK(goalPosition)
+            return jointPoseReturned
+        except (rospy.ServiceException) as e:
+            print ("Service call failed: %s"%e)
 
 
-    def goToGoal(self, goalPosition):
-        desiredJointPositions = goalPosition
-        #desiredJointPositions = self.desiredGoal
-        currentJointPositions = self.lastState
-        desiredJointPositionsAugmented = desiredJointPositions - self.low
-        currentJointPositionsaugmented = currentJointPositions - self.low
+    def goToGoal(self, goalPosition, lastObs):
+        
         for joint in range(7):
-            difference = currentJointPositionsaugmented[joint] - desiredJointPositionsAugmented[joint]
-            while np.absolute(difference) > self.minDisplacement:
-                if difference > 0: #take negative action, backward
+            difference = lastObs - goalPosition
+            while np.absolute(difference[joint]) > self.minDisplacement:
+                #print ("Difference in goal for joint : ", joint, " = ", difference[joint] , " and current is : ", lastObs[joint], " and desired ", goalPosition[joint] )
+                if difference[joint] > 0: #take negative action, backward
                     action = [joint, 1]  
-                elif difference < 0: #take positive action, forward
+                elif difference[joint] < 0: #take positive action, forward
                     action = [joint, 0]
                 else: #take no action
                     None
-                observation, reward, done, info = self.step(action)
-                currentJointPositions = self.lastState
-                currentJointPositionsaugmented = currentJointPositions - self.low
-                difference = currentJointPositionsaugmented[joint] - desiredJointPositionsAugmented[joint]
-            if np.absolute(difference) <= self.minDisplacement:
+                obsData, reward, done, info = self.step(action, lastObs)
+                lastObs = obsData
+                difference = lastObs - goalPosition
+            if np.absolute(difference[joint]) <= self.minDisplacement:
                 print ("Goal position reached for joint number ", joint)
 
     
@@ -144,10 +119,10 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
-    def _step(self, action):
+    def _step(self, action, lastObservation):
 
 
-        lastObs = np.array(self.lastState)
+        lastObs = np.array(lastObservation)
         lastObsForward = (lastObs + self.minDisplacement)
         lastObsBackward = (lastObs - self.minDisplacement)
 
@@ -170,8 +145,9 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         data = None
         while data is None:
             try:
-                data = rospy.wait_for_message('/joint_states', JointState, timeout=5)
-                self.lastState = data.position
+                data = rospy.wait_for_message('/joint_states', JointState, timeout=10)
+                #self.lastState = data.position
+                state = np.array(data.position)
             except:
                 pass
 
@@ -182,7 +158,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         except (rospy.ServiceException) as e:
             print ("/gazebo/pause_physics service call failed")
 
-        state = data.position
+
         done = False
 
         # if not done:
@@ -201,9 +177,6 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
     def _reset(self):
 
         # Resets the state of the environment and returns an initial observation.
-
-        
-
 
         rospy.wait_for_service('/gazebo/reset_simulation')
         try:
@@ -228,12 +201,17 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         except (rospy.ServiceException) as e:
             print ("Service call failed: %s"%e)
 
-        #read laser data
+
+        for joint in range(7):
+            self.publishers[joint].publish(self.home[joint]) #homing at every reset
+
         data = None
         while data is None:
             try:
-                data = rospy.wait_for_message('/joint_states', JointState, timeout=5)
-                self.lastState = data.position
+                data = rospy.wait_for_message('/joint_states', JointState, timeout=10)
+                #self.lastState = data.position
+                state = np.array(data.position)
+                print ("New observation data received :", data.position)
             except:
                 pass
 
@@ -244,6 +222,6 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         except (rospy.ServiceException) as e:
             print ("/gazebo/pause_physics service call failed")
 
-        state = data.position
+         #send the observed state to the robot
 
         return state
