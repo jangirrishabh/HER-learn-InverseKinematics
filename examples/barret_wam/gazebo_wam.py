@@ -11,9 +11,9 @@ print("Reset!")
 # Check the env limits:
 #print(env.action_space) # Box(3,)
 #print(env.observation_space) # Box(9,)
-time.sleep(5)
-env.reset()
-print("Reset!")
+time.sleep(10)
+# env.reset()
+# print("Reset!")
 
 for i in range(100):
     obs = env.reset()

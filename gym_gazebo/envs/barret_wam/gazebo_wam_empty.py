@@ -5,7 +5,6 @@ import time
 import numpy as np
 import random
 
-
 from gym import utils, spaces
 from gym_gazebo.envs import gazebo_env
 from std_srvs.srv import Empty
@@ -47,7 +46,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.envelopeAugmented = self.high - self.low 
 
 
-        self.action_space = spaces.MultiBinary(7) #discretizing action commands for now
+        self.action_space = spaces.MultiBinary(7)
         self.observation_space = spaces.Box(self.low, self.high)
         self.reward_range = (-np.inf, np.inf)
 
@@ -60,12 +59,12 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         tempPosition = []
         for joint in range(7):
             tempPosition.append(random.uniform(self.low[joint], self.high[joint]))
-            print ("GOAL position sampled for joint : ", joint, " is ", tempPosition[joint])
+            #print ("GOAL position sampled for joint : ", joint, " is ", tempPosition[joint])
 
         tempJointState = JointState()
         tempJointState.header.frame_id = self.baseFrame
         tempJointState.position = tempPosition
-        print (self.getForwardKinematics(tempJointState))
+        #print (self.getForwardKinematics(tempJointState))
 
         #tempPose = PoseStamped(frame_id = frame_ID , position, orientation)
         #self.desiredGoal = tempPosition
@@ -97,6 +96,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         
         for joint in range(7):
             difference = lastObs - goalPosition
+            start_time = time.time()
             while np.absolute(difference[joint]) > self.minDisplacement:
                 #print ("Difference in goal for joint : ", joint, " = ", difference[joint] , " and current is : ", lastObs[joint], " and desired ", goalPosition[joint] )
                 if difference[joint] > 0: #take negative action, backward
@@ -108,8 +108,16 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
                 obsData, reward, done, info = self.step(action, lastObs)
                 lastObs = obsData
                 difference = lastObs - goalPosition
+                elapsed_time = time.time() - start_time
+                if elapsed_time > 30: 
+                    print("exiting from while loop")
+                    break
+
             if np.absolute(difference[joint]) <= self.minDisplacement:
                 print ("Goal position reached for joint number ", joint)
+            else:
+                print("exiting due to bad goal point")
+                break
 
     
 
@@ -146,8 +154,14 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         while data is None:
             try:
                 data = rospy.wait_for_message('/joint_states', JointState, timeout=10)
-                #self.lastState = data.position
-                state = np.array(data.position)
+                if (np.array(data.position)<=self.high).all() and (np.array(data.position)>=self.low).all():
+                    state = np.array(data.position)
+                    #print ("New Authentic observation data received :")
+                else:
+                    data = None
+                    print ("Bad observation data received " )
+                    for joint in range(7):
+                        self.publishers[joint].publish(self.home[joint]) #homing at every reset
             except:
                 pass
 
@@ -178,12 +192,12 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
         # Resets the state of the environment and returns an initial observation.
 
-        rospy.wait_for_service('/gazebo/reset_simulation')
-        try:
-            #reset_proxy.call()
-            self.reset_proxy()
-        except (rospy.ServiceException) as e:
-            print ("/gazebo/reset_simulation service call failed")
+        # rospy.wait_for_service('/gazebo/reset_simulation')
+        # try:
+        #     #reset_proxy.call()
+        #     self.reset_proxy()
+        # except (rospy.ServiceException) as e:
+        #     print ("/gazebo/reset_simulation service call failed")
 
         # Unpause simulation to make observation
         rospy.wait_for_service('/gazebo/unpause_physics')
@@ -209,11 +223,17 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         while data is None:
             try:
                 data = rospy.wait_for_message('/joint_states', JointState, timeout=10)
-                #self.lastState = data.position
-                state = np.array(data.position)
-                print ("New observation data received :", data.position)
+                if (np.array(data.position)<=self.high).all() and (np.array(data.position)>=self.low).all():
+                    state = np.array(data.position)
+                    #print ("New Authentic observation data received :")
+                else:
+                    data = None
+                    print ("Bad observation data received " )
+                    for joint in range(7):
+                        self.publishers[joint].publish(self.home[joint]) #homing at every reset
             except:
                 pass
+                
 
         rospy.wait_for_service('/gazebo/pause_physics')
         try:
