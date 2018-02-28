@@ -28,9 +28,11 @@ def main():
     for i in range(100):
         obs = env.reset()
         print("Reset!")
-        randomGoalPosition = getRandomGoal(env)
-        print("New Goal received!")
-        goToGoal(env, randomGoalPosition, obs)
+        #randomGoalPosition = env.getRandomGoal()
+        #print("New Goal received!")
+        goToGoal(env, obs)
+        # action = randint(0, 13)
+        # obsData, reward, done, info = env.step(action)
         #time.sleep(5)
         # for x in range(1000):
         #     # env.render()
@@ -67,32 +69,16 @@ def getForwardKinematics(env, goalPosition): #get catesian coordinates for joint
         print ("Service call failed: %s"%e)
 
 
-def getRandomGoal(env):  #sample from reachable positions
-    frame_ID = env.baseFrame
-    tempPosition = []
-    for joint in range(7):
-        tempPosition.append(random.uniform(env.low[joint], env.high[joint]))
-
-    tempJointState = JointState()
-    tempJointState.header.frame_id = env.baseFrame
-    tempJointState.position = tempPosition
-    #print (self.getForwardKinematics(tempJointState))
-
-    return tempPosition
 
 def actionMapping(ac):
     trueAction = ac[0] + ac[1]*7
     return trueAction
 
 
-
-
-
-
-def goToGoal(env, goalPosition, lastObs):
-        
+def goToGoal(env, lastObs):
+    goalPosition = lastObs[np.shape(env.high)[0]:]
     for joint in range(7):
-        difference = lastObs - goalPosition
+        difference = lastObs[:np.shape(env.high)[0]] - goalPosition
         start_time = time.time()
         while np.absolute(difference[joint]) > env.minDisplacement:
             #print ("Difference in goal for joint : ", joint, " = ", difference[joint] , " and current is : ", lastObs[joint], " and desired ", goalPosition[joint] )
@@ -102,8 +88,10 @@ def goToGoal(env, goalPosition, lastObs):
                 action = actionMapping([joint, 0])
             else: #take no action
                 None
-            obsData, reward, done, info = env.step(action, lastObs)
-            lastObs = obsData
+            obsData, reward, done, info = env.step(action)
+            if reward > 0.001:
+                print ("Reward received :", reward)
+            lastObs = obsData[:np.shape(env.high)[0]]
             difference = lastObs - goalPosition
             elapsed_time = time.time() - start_time
             if elapsed_time > env.waitTime: 
@@ -115,6 +103,9 @@ def goToGoal(env, goalPosition, lastObs):
         else:
             print("exiting due to bad goal point")
             break
+
+        # if done==True:
+        #     break
 
 
 

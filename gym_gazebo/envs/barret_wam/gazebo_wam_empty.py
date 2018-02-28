@@ -13,6 +13,7 @@ from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Float64
 from controller_manager_msgs.srv import SwitchController
 from gym.utils import seeding
+from numpy import linalg as LA
 
 
 
@@ -42,25 +43,42 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.home = np.zeros(7)
         self.high = np.array([2.5, 1.9, 2.7, 3.0, 1.14, 1.47, 3])
         self.low = np.array([-2.5, -1.9, -2.7, -0.8, -4.66, -1.47, -3])
+        self.checkDisplacement = np.array([0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9])
 
         self.envelopeAugmented = self.high - self.low 
-
+        self.lastObservation = None
 
         #self.action_space = spaces.MultiBinary(7)
         self.action_space = spaces.Discrete(14)
-        self.observation_space = spaces.Box(self.low, self.high)
+        self.observation_space = spaces.Box(np.concatenate((self.low,self.low), axis=0), np.concatenate((self.high,self.high), axis=0))
         self.reward_range = (-np.inf, np.inf)
 
     
+
+    def getRandomGoal(self):  #sample from reachable positions
+        frame_ID = self.baseFrame
+        tempPosition = []
+        for joint in range(7):
+            tempPosition.append(random.uniform(self.low[joint], self.high[joint]))
+
+        tempJointState = JointState()
+        tempJointState.header.frame_id = self.baseFrame
+        tempJointState.position = tempPosition
+        #print (self.getForwardKinematics(tempJointState))
+
+        return np.array(tempPosition)
 
     def _seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
-    def _step(self, action, lastObservation):
-        lastObs = np.array(lastObservation)
+    def _step(self, action):
+
+        lastObs = self.lastObservation[:np.shape(self.high)[0]] # only the first seven observations, rest 7 give the goal 
         lastObsForward = (lastObs + self.minDisplacement)
         lastObsBackward = (lastObs - self.minDisplacement)
+
+        goalState = self.lastObservation[np.shape(self.high)[0]:] # the goal information was contained in the state observation
 
 
         rospy.wait_for_service('/gazebo/unpause_physics')
@@ -97,7 +115,9 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
             try:
                 data = rospy.wait_for_message('/joint_states', JointState, timeout=10)
                 if (np.array(data.position)<=self.high).all() and (np.array(data.position)>=self.low).all():
-                    state = np.array(data.position)
+                    stateArms = np.array(data.position)
+                    state = np.concatenate((stateArms, goalState), axis=0) # get a random goal every time you reset
+                    self.lastObservation = state
                     #print ("New Authentic observation data received :")
                 else:
                     data = None
@@ -121,7 +141,22 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
             print ("/gazebo/pause_physics service call failed")
 
 
-        done = False
+
+        goalArmDifferenceLast = LA.norm(lastObs - goalState)
+        goalArmDifference = LA.norm(stateArms - goalState)
+        
+
+        diff = goalArmDifferenceLast - goalArmDifference
+        if diff>0:
+            reward = diff
+        else: reward = 0
+        #reward = goalArmDifference
+
+        if ( np.absolute(stateArms - goalState) <= self.checkDisplacement).all():
+            done = True
+            reward += 10
+        else: done = False
+        #done = False
 
         # if not done:
         #     if action == 0:
@@ -131,7 +166,8 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         # else:
         #     reward = -200
 
-        reward = 0
+
+
 
         return state, reward, done, {}
 
@@ -174,11 +210,15 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
             self.pub7.publish(self.home[joint])
 
         data = None
+        #state = None
         while data is None:
             try:
                 data = rospy.wait_for_message('/joint_states', JointState, timeout=10)
                 if (np.array(data.position)<=self.high).all() and (np.array(data.position)>=self.low).all():
                     state = np.array(data.position)
+                    stateFull = np.concatenate((state, self.getRandomGoal()), axis=0) # get a random goal every time you reset
+                    self.lastObservation = stateFull
+                    print("New Goal received!")
                     #print ("New Authentic observation data received :")
                 else:
                     data = None
@@ -204,4 +244,4 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
          #send the observed state to the robot
 
-        return state
+        return stateFull
