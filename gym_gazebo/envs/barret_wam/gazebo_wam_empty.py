@@ -13,8 +13,7 @@ from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Float64
 from controller_manager_msgs.srv import SwitchController
 from gym.utils import seeding
-from iri_common_drivers_msgs.srv import QueryInverseKinematics
-from iri_common_drivers_msgs.srv import QueryForwardKinematics
+
 
 
 class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
@@ -36,8 +35,9 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
         self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
         self.reset_proxy = rospy.ServiceProxy('/gazebo/reset_simulation', Empty)
-        self.minDisplacement = 0.09
-        self.baseFrame = 'iri_wam_link_base'
+        self.minDisplacement = None
+        self.baseFrame = None
+        self.waitTime = None
 
         self.home = np.zeros(7)
         self.high = np.array([2.5, 1.9, 2.7, 3.0, 1.14, 1.47, 3])
@@ -50,86 +50,13 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.observation_space = spaces.Box(self.low, self.high)
         self.reward_range = (-np.inf, np.inf)
 
-        self._seed()
-        #self.lastState = None
-
-
-    def getRandomGoal(self):  #sample from reachable positions
-        frame_ID = self.baseFrame
-        tempPosition = []
-        for joint in range(7):
-            tempPosition.append(random.uniform(self.low[joint], self.high[joint]))
-            #print ("GOAL position sampled for joint : ", joint, " is ", tempPosition[joint])
-
-        tempJointState = JointState()
-        tempJointState.header.frame_id = self.baseFrame
-        tempJointState.position = tempPosition
-        #print (self.getForwardKinematics(tempJointState))
-
-        #tempPose = PoseStamped(frame_id = frame_ID , position, orientation)
-        #self.desiredGoal = tempPosition
-        return tempPosition
-
-        
-    # def getInverseKinematics(self, goalPose): #get joint angles for reaching the goal position
-    #     goalPoseStamped = goalPose
-    #     rospy.wait_for_service('/iri_wam/iri_wam_ik/get_wam_ik')
-    #     try:
-    #         getIK = rospy.ServiceProxy('/iri_wam/iri_wam_ik/get_wam_ik', QueryInverseKinematics)
-    #         jointPositionsReturned = getIK(goalPoseStamped)
-    #         return jointPositionsReturned.position
-    #     except (rospy.ServiceException) as e:
-    #         print ("Service call failed: %s"%e)
-
-    def getForwardKinematics(self, goalPosition): #get catesian coordinates for joint Positions
-
-        rospy.wait_for_service('/iri_wam/iri_wam_ik/get_wam_fk')
-        try:
-            getFK = rospy.ServiceProxy('/iri_wam/iri_wam_ik/get_wam_fk', QueryForwardKinematics)
-            jointPoseReturned = getFK(goalPosition)
-            return jointPoseReturned
-        except (rospy.ServiceException) as e:
-            print ("Service call failed: %s"%e)
-
-
-    def goToGoal(self, goalPosition, lastObs):
-        
-        for joint in range(7):
-            difference = lastObs - goalPosition
-            start_time = time.time()
-            while np.absolute(difference[joint]) > self.minDisplacement:
-                #print ("Difference in goal for joint : ", joint, " = ", difference[joint] , " and current is : ", lastObs[joint], " and desired ", goalPosition[joint] )
-                if difference[joint] > 0: #take negative action, backward
-                    action = [joint, 1]  
-                elif difference[joint] < 0: #take positive action, forward
-                    action = [joint, 0]
-                else: #take no action
-                    None
-                obsData, reward, done, info = self.step(action, lastObs)
-                lastObs = obsData
-                difference = lastObs - goalPosition
-                elapsed_time = time.time() - start_time
-                if elapsed_time > 30: 
-                    print("exiting from while loop")
-                    break
-
-            if np.absolute(difference[joint]) <= self.minDisplacement:
-                print ("Goal position reached for joint number ", joint)
-            else:
-                print("exiting due to bad goal point")
-                break
-
     
-
-
 
     def _seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
 
     def _step(self, action, lastObservation):
-
-
         lastObs = np.array(lastObservation)
         lastObsForward = (lastObs + self.minDisplacement)
         lastObsBackward = (lastObs - self.minDisplacement)
@@ -192,7 +119,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
         # Resets the state of the environment and returns an initial observation.
 
-        # rospy.wait_for_service('/gazebo/reset_simulation')
+        # rospy.wait_for_service('/gazebo/reset_simulation') # Reset simulation was causing problems, do not reset simulation
         # try:
         #     #reset_proxy.call()
         #     self.reset_proxy()
