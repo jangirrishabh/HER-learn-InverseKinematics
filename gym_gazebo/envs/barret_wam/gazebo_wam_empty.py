@@ -24,13 +24,13 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         #self.vel_pub = rospy.Publisher('/mobile_base/commands/velocity', Twist, queue_size=5)
         self.publishers = ['pub1', 'pub2', 'pub3', 'pub4', 'pub5', 'pub6', 'pub7']
 
-        self.publishers[0] = rospy.Publisher('/iri_wam/joint1_position_controller/command', Float64, queue_size=5)
-        self.publishers[1] = rospy.Publisher('/iri_wam/joint2_position_controller/command', Float64, queue_size=5)
-        self.publishers[2] = rospy.Publisher('/iri_wam/joint3_position_controller/command', Float64, queue_size=5)
-        self.publishers[3] = rospy.Publisher('/iri_wam/joint4_position_controller/command', Float64, queue_size=5)
-        self.publishers[4] = rospy.Publisher('/iri_wam/joint5_position_controller/command', Float64, queue_size=5)
-        self.publishers[5] = rospy.Publisher('/iri_wam/joint6_position_controller/command', Float64, queue_size=5)
-        self.publishers[6] = rospy.Publisher('/iri_wam/joint7_position_controller/command', Float64, queue_size=5) # discretely publishing motor actions for now
+        self.pub1 = rospy.Publisher('/iri_wam/joint1_position_controller/command', Float64, queue_size=5)
+        self.pub2 = rospy.Publisher('/iri_wam/joint2_position_controller/command', Float64, queue_size=5)
+        self.pub3 = rospy.Publisher('/iri_wam/joint3_position_controller/command', Float64, queue_size=5)
+        self.pub4 = rospy.Publisher('/iri_wam/joint4_position_controller/command', Float64, queue_size=5)
+        self.pub5 = rospy.Publisher('/iri_wam/joint5_position_controller/command', Float64, queue_size=5)
+        self.pub6 = rospy.Publisher('/iri_wam/joint6_position_controller/command', Float64, queue_size=5)
+        self.pub7 = rospy.Publisher('/iri_wam/joint7_position_controller/command', Float64, queue_size=5) # discretely publishing motor actions for now
         
         self.unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
         self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
@@ -46,7 +46,8 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.envelopeAugmented = self.high - self.low 
 
 
-        self.action_space = spaces.MultiBinary(7)
+        #self.action_space = spaces.MultiBinary(7)
+        self.action_space = spaces.Discrete(14)
         self.observation_space = spaces.Box(self.low, self.high)
         self.reward_range = (-np.inf, np.inf)
 
@@ -68,13 +69,27 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         except (rospy.ServiceException) as e:
             print ("/gazebo/unpause_physics service call failed")
 
-        jointNumber = action[0]
-        jointAction = action[1]
+        #jointNumber = action[0]
+        #jointAction = action[1]
 
 
-        if jointAction == 0: self.publishers[jointNumber].publish(lastObsForward[jointNumber])
-        elif jointAction == 1: self.publishers[jointNumber].publish(lastObsBackward[jointNumber])
+        #if jointAction == 0: self.publishers[jointNumber].publish(lastObsForward[jointNumber])
+        #elif jointAction == 1: self.publishers[jointNumber].publish(lastObsBackward[jointNumber])
 
+        if action == 0: self.pub1.publish(lastObsForward[0])
+        elif action == 1: self.pub2.publish(lastObsForward[1])
+        elif action == 2: self.pub3.publish(lastObsForward[2])
+        elif action == 3: self.pub4.publish(lastObsForward[3])
+        elif action == 4: self.pub5.publish(lastObsForward[4])
+        elif action == 5: self.pub6.publish(lastObsForward[5])
+        elif action == 6: self.pub7.publish(lastObsForward[6])
+        elif action == 7: self.pub1.publish(lastObsBackward[0])
+        elif action == 8: self.pub2.publish(lastObsBackward[1])
+        elif action == 9: self.pub3.publish(lastObsBackward[2])
+        elif action == 10: self.pub4.publish(lastObsBackward[3])
+        elif action == 11: self.pub5.publish(lastObsBackward[4])
+        elif action == 12: self.pub6.publish(lastObsBackward[5])
+        elif action == 13: self.pub7.publish(lastObsBackward[6])
         
 
         data = None
@@ -88,7 +103,13 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
                     data = None
                     print ("Bad observation data received " )
                     for joint in range(7):
-                        self.publishers[joint].publish(self.home[joint]) #homing at every reset
+                        self.pub1.publish(self.home[joint]) #homing at every reset
+                        self.pub2.publish(self.home[joint])
+                        self.pub3.publish(self.home[joint])
+                        self.pub4.publish(self.home[joint])
+                        self.pub5.publish(self.home[joint])
+                        self.pub6.publish(self.home[joint])
+                        self.pub7.publish(self.home[joint])
             except:
                 pass
 
@@ -144,7 +165,13 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
 
         for joint in range(7):
-            self.publishers[joint].publish(self.home[joint]) #homing at every reset
+            self.pub1.publish(self.home[joint]) #homing at every reset
+            self.pub2.publish(self.home[joint])
+            self.pub3.publish(self.home[joint])
+            self.pub4.publish(self.home[joint])
+            self.pub5.publish(self.home[joint])
+            self.pub6.publish(self.home[joint])
+            self.pub7.publish(self.home[joint])
 
         data = None
         while data is None:
@@ -157,7 +184,13 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
                     data = None
                     print ("Bad observation data received " )
                     for joint in range(7):
-                        self.publishers[joint].publish(self.home[joint]) #homing at every reset
+                        self.pub1.publish(self.home[joint]) #homing at every reset
+                        self.pub2.publish(self.home[joint])
+                        self.pub3.publish(self.home[joint])
+                        self.pub4.publish(self.home[joint])
+                        self.pub5.publish(self.home[joint])
+                        self.pub6.publish(self.home[joint])
+                        self.pub7.publish(self.home[joint])
             except:
                 pass
                 

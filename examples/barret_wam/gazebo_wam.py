@@ -80,6 +80,15 @@ def getRandomGoal(env):  #sample from reachable positions
 
     return tempPosition
 
+def actionMapping(ac):
+    trueAction = ac[0] + ac[1]*7
+    return trueAction
+
+
+
+
+
+
 def goToGoal(env, goalPosition, lastObs):
         
     for joint in range(7):
@@ -88,9 +97,9 @@ def goToGoal(env, goalPosition, lastObs):
         while np.absolute(difference[joint]) > env.minDisplacement:
             #print ("Difference in goal for joint : ", joint, " = ", difference[joint] , " and current is : ", lastObs[joint], " and desired ", goalPosition[joint] )
             if difference[joint] > 0: #take negative action, backward
-                action = [joint, 1]  
+                action = actionMapping([joint, 1])  
             elif difference[joint] < 0: #take positive action, forward
-                action = [joint, 0]
+                action = actionMapping([joint, 0])
             else: #take no action
                 None
             obsData, reward, done, info = env.step(action, lastObs)
