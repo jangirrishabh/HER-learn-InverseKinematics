@@ -43,7 +43,8 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.home = np.zeros(7)
         self.high = np.array([2.5, 1.9, 2.7, 3.0, 1.14, 1.47, 3])
         self.low = np.array([-2.5, -1.9, -2.7, -0.8, -4.66, -1.47, -3])
-        self.checkDisplacement = np.array([0.9, 0.9, 0.9, 0.9, 0.9, 0.9, 0.9])
+        self.minDisplacementCheck = 0.09
+        self.checkDisplacement = np.array([self.minDisplacementCheck, self.minDisplacementCheck, self.minDisplacementCheck, self.minDisplacementCheck, self.minDisplacementCheck, self.minDisplacementCheck, self.minDisplacementCheck])
 
         self.envelopeAugmented = self.high - self.low 
         self.lastObservation = None
@@ -87,13 +88,6 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         except (rospy.ServiceException) as e:
             print ("/gazebo/unpause_physics service call failed")
 
-        #jointNumber = action[0]
-        #jointAction = action[1]
-
-
-        #if jointAction == 0: self.publishers[jointNumber].publish(lastObsForward[jointNumber])
-        #elif jointAction == 1: self.publishers[jointNumber].publish(lastObsBackward[jointNumber])
-
         if action == 0: self.pub1.publish(lastObsForward[0])
         elif action == 1: self.pub2.publish(lastObsForward[1])
         elif action == 2: self.pub3.publish(lastObsForward[2])
@@ -118,7 +112,6 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
                     stateArms = np.array(data.position)
                     state = np.concatenate((stateArms, goalState), axis=0) # get a random goal every time you reset
                     self.lastObservation = state
-                    #print ("New Authentic observation data received :")
                 else:
                     data = None
                     print ("Bad observation data received " )
@@ -135,7 +128,6 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
         rospy.wait_for_service('/gazebo/pause_physics')
         try:
-            #resp_pause = pause.call()
             self.pause()
         except (rospy.ServiceException) as e:
             print ("/gazebo/pause_physics service call failed")
@@ -147,24 +139,15 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         
 
         diff = goalArmDifferenceLast - goalArmDifference
-        if diff>0:
-            reward = diff
-        else: reward = 0
-        #reward = goalArmDifference
+        reward = diff
 
-        if ( np.absolute(stateArms - goalState) <= self.checkDisplacement).all():
+        #print ("Difference Total ", np.absolute(stateArms - goalState), ( np.absolute(stateArms - goalState) <= self.checkDisplacement).all() )
+        if ( np.absolute(stateArms - goalState) <= self.checkDisplacement ).all():
+            #print ("Difference Total ", np.absolute(stateArms - goalState), ( np.absolute(stateArms - goalState) <= self.checkDisplacement).all() )
             done = True
             reward += 10
         else: done = False
-        #done = False
-
-        # if not done:
-        #     if action == 0:
-        #         reward = 5
-        #     else:
-        #         reward = 1
-        # else:
-        #     reward = -200
+        
 
 
 

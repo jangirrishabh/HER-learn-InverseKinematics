@@ -15,17 +15,24 @@ from iri_common_drivers_msgs.srv import QueryInverseKinematics
 from iri_common_drivers_msgs.srv import QueryForwardKinematics
 
 
+ep_returns = []
+actions = []
+observations = []
+rewards = []
+
 def main():
     env = gym.make('GazeboWAMemptyEnv-v0')
     env.minDisplacement = 0.09
+    env.minDisplacementCheck = 0.09
     env.baseFrame = 'iri_wam_link_base'
     env.waitTime = 15 #time to wait if link gets stuck in seconds
     env.seed()
+    
 
     env.reset()
     print("Reset!")
     time.sleep(10)
-    for i in range(100):
+    while len(actions) < 1500:
         obs = env.reset()
         print("Reset!")
         #randomGoalPosition = env.getRandomGoal()
@@ -76,37 +83,61 @@ def actionMapping(ac):
 
 
 def goToGoal(env, lastObs):
+    done = False
     goalPosition = lastObs[np.shape(env.high)[0]:]
-    for joint in range(7):
-        difference = lastObs[:np.shape(env.high)[0]] - goalPosition
-        start_time = time.time()
-        while np.absolute(difference[joint]) > env.minDisplacement:
-            #print ("Difference in goal for joint : ", joint, " = ", difference[joint] , " and current is : ", lastObs[joint], " and desired ", goalPosition[joint] )
-            if difference[joint] > 0: #take negative action, backward
-                action = actionMapping([joint, 1])  
-            elif difference[joint] < 0: #take positive action, forward
-                action = actionMapping([joint, 0])
-            else: #take no action
-                None
-            obsData, reward, done, info = env.step(action)
-            if reward > 0.001:
-                print ("Reward received :", reward)
-            lastObs = obsData[:np.shape(env.high)[0]]
-            difference = lastObs - goalPosition
-            elapsed_time = time.time() - start_time
-            if elapsed_time > env.waitTime: 
-                print("exiting from while loop")
+    ep_return = 0
+    reached = 0
+    episodeAcs = []
+    episodeObs = []
+    episodeRews = []
+    while done == False:
+        for joint in range(7):
+            difference = lastObs[:np.shape(env.high)[0]] - goalPosition
+            start_time = time.time()
+            while np.absolute(difference[joint]) > env.minDisplacement:
+                #print ("Difference in goal for joint : ", joint, " = ", difference[joint] , " and current is : ", lastObs[joint], " and desired ", goalPosition[joint] )
+                if difference[joint] > 0: #take negative action, backward
+                    action = actionMapping([joint, 1])  
+                elif difference[joint] < 0: #take positive action, forward
+                    action = actionMapping([joint, 0])
+                else: #take no action
+                    None
+                obsData, reward, done, info = env.step(action)
+                if np.absolute(reward) > 0.001:
+                    print ("Reward received :", reward)
+                    episodeAcs.append(action)
+                    episodeObs.append(obsData)
+                    episodeRews.append(reward)
+                    ep_return += reward
+                lastObs = obsData[:np.shape(env.high)[0]]
+                difference = lastObs - goalPosition
+                elapsed_time = time.time() - start_time
+                if elapsed_time > env.waitTime: 
+                    print("exiting from while loop")
+                    break
+
+            if np.absolute(difference[joint]) < env.minDisplacementCheck:
+                #print ("Difference particular joint  ", np.absolute(difference[joint]), env.minDisplacementCheck, np.absolute(difference[joint]) < env.minDisplacementCheck )
+                reached = joint
+                print ("Goal position reached for joint number ", joint)
+            else:
+                print("exiting due to bad goal point")
                 break
 
-        if np.absolute(difference[joint]) <= env.minDisplacement:
-            print ("Goal position reached for joint number ", joint)
-        else:
-            print("exiting due to bad goal point")
+            if done==True and reached==6:
+                ep_returns.append(ep_return)
+                actions.append(np.array(episodeAcs))
+                observations.append(np.array(episodeObs))
+                rewards.append(np.array(episodeRews))
+                print ("total episode return: ", ep_return)
+                print ("total episode actions lenght: ", len(episodeAcs))
+                print ("total episode observation length : ", len(episodeObs))
+                break
+
+        if elapsed_time > env.waitTime: 
+            print("exiting from while loop")
             break
-
-        # if done==True:
-        #     break
-
+        
 
 
 if __name__ == "__main__":
