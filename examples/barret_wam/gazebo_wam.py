@@ -3,11 +3,14 @@ import gym_gazebo
 import time
 import random
 import numpy as np
+import rospy
+import roslaunch
 
 from random import randint
 from std_srvs.srv import Empty
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import Pose
 from std_msgs.msg import Float64
 from controller_manager_msgs.srv import SwitchController
 from gym.utils import seeding
@@ -23,6 +26,7 @@ rewards = []
 def main():
     env = gym.make('GazeboWAMemptyEnv-v0')
     env.minDisplacement = 0.09
+    env.minDisplacementPose = 0.025
     env.minDisplacementCheck = 0.09
     env.baseFrame = 'iri_wam_link_base'
     env.waitTime = 15 #time to wait if link gets stuck in seconds
@@ -56,22 +60,27 @@ def main():
 
 
 
-# def getInverseKinematics(self, goalPose): #get joint angles for reaching the goal position
-#     goalPoseStamped = goalPose
-#     rospy.wait_for_service('/iri_wam/iri_wam_ik/get_wam_ik')
-#     try:
-#         getIK = rospy.ServiceProxy('/iri_wam/iri_wam_ik/get_wam_ik', QueryInverseKinematics)
-#         jointPositionsReturned = getIK(goalPoseStamped)
-#         return jointPositionsReturned.position
-#     except (rospy.ServiceException) as e:
-#         print ("Service call failed: %s"%e)
+def getInverseKinematics(env, goalPose): #get joint angles for reaching the goal position
+    tempPose = Pose()
+    #tempPose.header.frame_id = env.baseFrame
+    tempPose.position.x = goalPose[0]
+    tempPose.position.y = goalPose[1]
+    tempPose.position.z = goalPose[2]
+    tempPose.orientation.x = goalPose[3]
+    tempPose.orientation.y = goalPose[4]
+    tempPose.orientation.z = goalPose[5]
+    tempPose.orientation.w = goalPose[6]
 
-def getForwardKinematics(env, goalPosition): #get catesian coordinates for joint Positions
-    rospy.wait_for_service('/iri_wam/iri_wam_ik/get_wam_fk')
+    #print (tempPose)
+    goalPoseStamped = PoseStamped()
+    goalPoseStamped.header.frame_id = env.baseFrame
+    goalPoseStamped.pose = tempPose
+    rospy.wait_for_service('/iri_wam/iri_wam_ik/get_wam_ik')
     try:
-        getFK = rospy.ServiceProxy('/iri_wam/iri_wam_ik/get_wam_fk', QueryForwardKinematics)
-        jointPoseReturned = getFK(goalPosition)
-        return jointPoseReturned
+        getIK = rospy.ServiceProxy('/iri_wam/iri_wam_ik/get_wam_ik', QueryInverseKinematics)
+        jointPositionsReturned = getIK(goalPoseStamped)
+        #print ("Returned by IK " , jointPositionsReturned)
+        return jointPositionsReturned.joints.position
     except (rospy.ServiceException) as e:
         print ("Service call failed: %s"%e)
 
@@ -84,7 +93,7 @@ def actionMapping(ac):
 
 def goToGoal(env, lastObs):
     done = False
-    goalPosition = lastObs[np.shape(env.high)[0]:]
+    goalPosition = getInverseKinematics(env, lastObs[np.shape(env.high)[0]:])
     ep_return = 0
     reached = 0
     episodeAcs = []
@@ -104,7 +113,7 @@ def goToGoal(env, lastObs):
                     None
                 obsData, reward, done, info = env.step(action)
                 if np.absolute(reward) > 0.001:
-                    print ("Reward received :", reward)
+                    #print ("Reward received :", reward)
                     episodeAcs.append(action)
                     episodeObs.append(obsData)
                     episodeRews.append(reward)
