@@ -11,6 +11,8 @@ from std_srvs.srv import Empty
 from sensor_msgs.msg import JointState
 from geometry_msgs.msg import PoseStamped
 from geometry_msgs.msg import Pose
+from geometry_msgs.msg import Point
+from visualization_msgs.msg import Marker
 from std_msgs.msg import Float64
 from controller_manager_msgs.srv import SwitchController
 from gym.utils import seeding
@@ -35,7 +37,8 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.pub5 = rospy.Publisher('/iri_wam/joint5_position_controller/command', Float64, queue_size=5)
         self.pub6 = rospy.Publisher('/iri_wam/joint6_position_controller/command', Float64, queue_size=5)
         self.pub7 = rospy.Publisher('/iri_wam/joint7_position_controller/command', Float64, queue_size=5) # discretely publishing motor actions for now
-        
+        self.pubMarker = rospy.Publisher('/goalPose', Marker, queue_size=100)
+
         self.unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
         self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
         self.reset_proxy = rospy.ServiceProxy('/gazebo/reset_simulation', Empty)
@@ -43,10 +46,13 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.minDisplacementPose = None
         self.baseFrame = None
         self.waitTime = None
+        self.homingTime = 5
 
         self.home = np.zeros(7)
-        self.high = np.array([2.5, 1.9, 2.7, 3.0, 1.14, 1.47, 3])
-        self.low = np.array([-2.5, -1.9, -2.7, -0.8, -4.66, -1.47, -3])
+        self.Actualhigh = np.array([2.5, 1.9, 2.7, 3.0, 1.14, 1.47, 3])
+        self.Actuallow = np.array([-2.5, -1.9, -2.7, -0.8, -4.66, -1.47, -3])
+        self.high = np.array([2.0, 1.5, 2.0, 2.5, 1.0, 1.47, 3])
+        self.low = np.array([-2.0, -1.5, -2.0, -0.5, -4.0, -1.47, -3])
         self.minDisplacementCheck = 0.09
         self.checkDisplacement = np.array([self.minDisplacementCheck, self.minDisplacementCheck, self.minDisplacementCheck, self.minDisplacementCheck, self.minDisplacementCheck, self.minDisplacementCheck, self.minDisplacementCheck])
 
@@ -77,25 +83,15 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         tempJointState = JointState()
         tempJointState.header.frame_id = self.baseFrame
         tempJointState.position = tempPosition
-        #print (self.getForwardKinematics(tempJointState))
-
-        return np.array(tempPosition)
-
-    def getRandomGoal2(self):  #sample from reachable positions
-        frame_ID = self.baseFrame
-        tempPosition = []
-        for joint in range(7):
-            tempPosition.append(random.uniform(self.low[joint], self.high[joint]))
-
-        tempJointState = JointState()
-        tempJointState.header.frame_id = self.baseFrame
-        tempJointState.position = tempPosition
         tempPoseFK = self.getForwardKinematics(tempJointState)
-        #print (tempPoseFK)
 
         tempTemp = [tempPoseFK.pose.pose.position.x, tempPoseFK.pose.pose.position.y, tempPoseFK.pose.pose.position.z, tempPoseFK.pose.pose.orientation.x, tempPoseFK.pose.pose.orientation.y, tempPoseFK.pose.pose.orientation.z, tempPoseFK.pose.pose.orientation.w]
 
-        return np.array(tempTemp)
+        #print (tempPoseFK)
+        
+
+
+        return np.array(tempTemp), tempPoseFK
 
     def _seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -109,6 +105,32 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
         goalState = self.lastObservation[np.shape(self.high)[0]:] # the goal information was contained in the state observation
 
+        pointToPose = Point()
+        pointToPose.x = goalState[0]
+        pointToPose.y = goalState[1]
+        pointToPose.z = goalState[2]
+        markerObj = Marker()
+        markerObj.header.frame_id = self.baseFrame
+        #markerObj.header.stamp = rospy.get_rostime()
+        markerObj.id = 0
+        markerObj.ns = 'iri_wam'
+        markerObj.type = markerObj.SPHERE
+        markerObj.action = markerObj.ADD
+        markerObj.pose.position = pointToPose
+        markerObj.pose.orientation.x = goalState[3]
+        markerObj.pose.orientation.y = goalState[4]
+        markerObj.pose.orientation.z = goalState[5]
+        markerObj.pose.orientation.w = goalState[6]
+        markerObj.color.r = 1.0
+        markerObj.color.a = 1.0
+        markerObj.scale.x = 0.09
+        markerObj.scale.y = 0.09
+        markerObj.scale.z = 0.09
+
+        badDataFlag = False
+
+        self.pubMarker.publish(markerObj)
+        #print ("marker object two")
 
         rospy.wait_for_service('/gazebo/unpause_physics')
         try:
@@ -143,6 +165,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
                 else:
                     data = None
                     print ("Bad observation data received " )
+                    badDataFlag = True
                     for joint in range(7):
                         self.pub1.publish(self.home[joint]) #homing at every reset
                         self.pub2.publish(self.home[joint])
@@ -151,6 +174,8 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
                         self.pub5.publish(self.home[joint])
                         self.pub6.publish(self.home[joint])
                         self.pub7.publish(self.home[joint])
+
+                    time.sleep(self.homingTime)
             except:
                 pass
 
@@ -159,6 +184,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
             self.pause()
         except (rospy.ServiceException) as e:
             print ("/gazebo/pause_physics service call failed")
+
 
 
         # to calcualte the reward we need to know the current state as tcp point so use Fk for that
@@ -192,7 +218,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         reward = diff
 
         #print ("Difference Total ", np.absolute(stateArms - goalState), ( np.absolute(stateArms - goalState) <= self.checkDisplacement).all() )
-        print(" gooal arm difference :", goalArmDifference)
+        #print(" gooal arm difference :", goalArmDifference)
         if ( goalArmDifference <= self.minDisplacementPose ):
             #print ("Difference Total ", np.absolute(stateArms - goalState), ( np.absolute(stateArms - goalState) <= self.checkDisplacement).all() )
             done = True
@@ -203,7 +229,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
 
 
-        return state, reward, done, {}
+        return state, reward, done, badDataFlag
 
 
     def _reset(self):
@@ -251,13 +277,12 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
                 data = rospy.wait_for_message('/joint_states', JointState, timeout=10)
                 if (np.array(data.position)<=self.high).all() and (np.array(data.position)>=self.low).all():
                     state = np.array(data.position)
-                    stateFull = np.concatenate((state, self.getRandomGoal2()), axis=0) # get a random goal every time you reset
+                    goalArray, goalPose = self.getRandomGoal()
+                    stateFull = np.concatenate((state, goalArray), axis=0) # get a random goal every time you reset
                     self.lastObservation = stateFull
-                    # print("New Goal received! FIRSTTTTTTTT")
-                    # PoseObtained = self.getRandomGoal2()
-                    # print (PoseObtained)
                     print("New Goal received!")
-                    #print ("New Authentic observation data received :")
+                    
+                    
                 else:
                     data = None
                     print ("Bad observation data received " )
@@ -269,6 +294,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
                         self.pub5.publish(self.home[joint])
                         self.pub6.publish(self.home[joint])
                         self.pub7.publish(self.home[joint])
+                    time.sleep(self.homingTime)
             except:
                 pass
                 

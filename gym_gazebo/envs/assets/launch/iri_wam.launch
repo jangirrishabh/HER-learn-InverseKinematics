@@ -10,6 +10,9 @@
   <arg name="paused"       value="true"/>
   <arg name="headless"     default="false"/>
   <arg name="debug"        default="false"/>
+  <arg name="rviz"         default="True" />
+  <arg name="config"       default="model.rviz" />
+
 
   <!-- We resume the logic in empty_world.launch, changing only the name of the world to be launched -->
   <include file="$(find gazebo_ros)/launch/empty_world.launch">
@@ -31,6 +34,8 @@
   <node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen"
         args="-urdf -model iri_wam -param robot_description"/>
 
+   <node if="$(arg rviz)" name="rviz" pkg="rviz" type="rviz" 
+        args="-d $(find iri_wam_description)/config/rviz/$(arg config)"/>
   <!-- ros_control iri_wam launch file -->
   <include file="$(find iri_wam_gazebo)/launch/iri_wam_control.launch" />
 
