@@ -43,7 +43,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
         self.reset_proxy = rospy.ServiceProxy('/gazebo/reset_simulation', Empty)
         self.minDisplacement = 0.09
-        #self.minDisplacementPose = 0.09
+        self.minDisplacementPose = 0.1
         self.baseFrame = 'iri_wam_link_base'
         self.waitTime = 15
         self.homingTime = 5
@@ -76,18 +76,28 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
     def getRandomGoal(self):  #sample from reachable positions
         frame_ID = self.baseFrame
-        tempPosition = []
-        for joint in range(7):
-            tempPosition.append(random.uniform(self.low[joint], self.high[joint]))
+        
+        tempPoseFK = None
+        #print ("getting a random goal ")
 
-        tempJointState = JointState()
-        tempJointState.header.frame_id = self.baseFrame
-        tempJointState.position = tempPosition
-        tempPoseFK = self.getForwardKinematics(tempJointState)
+        while tempPoseFK==None:
+            #print ("in the while ")
+            tempPosition = []
+            for joint in range(7):
+                tempPosition.append(random.uniform(self.low[joint], self.high[joint]))
 
-        tempTemp = [tempPoseFK.pose.pose.position.x, tempPoseFK.pose.pose.position.y, tempPoseFK.pose.pose.position.z, tempPoseFK.pose.pose.orientation.x, tempPoseFK.pose.pose.orientation.y, tempPoseFK.pose.pose.orientation.z, tempPoseFK.pose.pose.orientation.w]
 
-        return np.array(tempTemp)
+
+            tempJointState = JointState()
+            tempJointState.header.frame_id = self.baseFrame
+            tempJointState.position = tempPosition
+
+            #print ("temp position to be send ", tempJointState)
+            tempPoseFK = self.getForwardKinematics(tempJointState)
+            #print ("tempPoseFK ", tempPoseFK)
+            if tempPoseFK!=None:
+                tempTemp = [tempPoseFK.pose.pose.position.x, tempPoseFK.pose.pose.position.y, tempPoseFK.pose.pose.position.z, tempPoseFK.pose.pose.orientation.x, tempPoseFK.pose.pose.orientation.y, tempPoseFK.pose.pose.orientation.z, tempPoseFK.pose.pose.orientation.w]
+                return np.array(tempTemp)
 
     def _seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -237,7 +247,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
         #print ("Difference Total ", np.absolute(stateArms - goalState), ( np.absolute(stateArms - goalState) <= self.checkDisplacement).all() )
         #print(" gooal arm difference :", goalArmDifference)
-        if ( goalArmDifference <= self.minDisplacement ):
+        if ( goalArmDifference <= self.minDisplacementPose ):
             #print ("Difference Total ", np.absolute(stateArms - goalState), ( np.absolute(stateArms - goalState) <= self.checkDisplacement).all() )
             done = True
             reward += 10

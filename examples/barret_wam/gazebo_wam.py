@@ -31,7 +31,7 @@ def main():
     env.reset()
     print("Reset!")
     time.sleep(10)
-    while len(actions) < 500:
+    while len(actions) < 100:
         obs = env.reset()
         print("Reset!")
         #randomGoalPosition = env.getRandomGoal()
@@ -128,6 +128,9 @@ def goToGoal(env, lastObs):
             break
         badDataFlag = False
         for joint in range(7):
+            episodeAcsTemp = np.zeros(env.action_space.shape[0])
+            episodeRewsTemp = 0
+            obsData = env.lastObservation
             difference = lastObs[:np.shape(env.high)[0]] - goalPosition
             start_time = time.time()
             while (np.absolute(difference[joint]) > env.minDisplacement) and done == False:
@@ -144,9 +147,8 @@ def goToGoal(env, lastObs):
                     break
                 if moved:#(np.absolute(reward) > 0.001) and moved:
                     #print ("Reward received :", reward)
-                    episodeAcs.append(action)
-                    episodeObs.append(obsData)
-                    episodeRews.append(reward)
+                    episodeAcsTemp += action
+                    episodeRewsTemp += reward
                     ep_return += reward
                 lastObs = obsData[:np.shape(env.high)[0]]
                 difference = lastObs - goalPosition
@@ -154,6 +156,7 @@ def goToGoal(env, lastObs):
                 if elapsed_time > env.waitTime: 
                     print("exiting from while loop")
                     break
+            
 
             elapsed_time = time.time() - start_time
             if badDataFlag: 
@@ -164,6 +167,13 @@ def goToGoal(env, lastObs):
                 #print ("Difference particular joint  ", np.absolute(difference[joint]), env.minDisplacementCheck, np.absolute(difference[joint]) < env.minDisplacementCheck )
                 reached = joint
                 print ("Goal position reached for joint number ", joint)
+                episodeObs.append(obsData)
+                episodeRews.append(episodeRewsTemp)
+                episodeAcs.append(episodeAcsTemp)
+                print ("Action values appended for joint  ", joint, episodeAcsTemp)
+                print ("Reward values appended for joint  ", joint, episodeRewsTemp)
+                print ("observation values appended for joint  ", joint, obsData)
+
             elif reached < 0 or elapsed_time > (env.waitTime*2) :
                 print("Bad point, moving out of for loop")
                 break
