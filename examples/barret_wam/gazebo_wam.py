@@ -25,18 +25,13 @@ rewards = []
 
 def main():
     env = gym.make('GazeboWAMemptyEnv-v0')
-    env.minDisplacement = 0.09
-    env.minDisplacementPose = 0.09
-    env.minDisplacementCheck = 0.09
-    env.baseFrame = 'iri_wam_link_base'
-    env.waitTime = 15 #time to wait if link gets stuck in seconds
     #env.seed()
     
 
     env.reset()
     print("Reset!")
     time.sleep(10)
-    while len(actions) < 2000:
+    while len(actions) < 500:
         obs = env.reset()
         print("Reset!")
         #randomGoalPosition = env.getRandomGoal()
@@ -91,17 +86,37 @@ def getInverseKinematics(env, goalPose): #get joint angles for reaching the goal
 
 
 
-def actionMapping(ac):
+def actionMapping(env, ac):
     trueAction = ac[0] + ac[1]*7
-    return trueAction
+
+    action = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+
+    action[ac[0]] = env.minDisplacement*ac[1]
+    # if   Taction == 0: trueAction = np.array([0, 0, 0, 0])
+    # elif Taction == 1: trueAction = np.array([0, 0, 0, 1])
+    # elif Taction == 2: trueAction = np.array([0, 0, 1, 0])
+    # elif Taction == 3: trueAction = np.array([0, 0, 1, 1])
+    # elif Taction == 4: trueAction = np.array([0, 1, 0, 0])
+    # elif Taction == 5: trueAction = np.array([0, 1, 0, 1])
+    # elif Taction == 6: trueAction = np.array([0, 1, 1, 0])
+    # elif Taction == 7: trueAction = np.array([0, 1, 1, 1])
+    # elif Taction == 8: trueAction = np.array([1, 0, 0, 0])
+    # elif Taction == 9: trueAction = np.array([1, 0, 0, 1])
+    # elif Taction == 10: trueAction = np.array([1, 0, 1, 0])
+    # elif Taction == 11: trueAction = np.array([1, 0, 1, 1])
+    # elif Taction == 12: trueAction = np.array([1, 1, 0, 0])
+    # elif Taction == 13: trueAction = np.array([1, 1, 0, 1])
+
+    return action
 
 
 def goToGoal(env, lastObs):
     done = False
     goalPosition = getInverseKinematics(env, lastObs[np.shape(env.high)[0]:])
 
-    ep_return = 0
+    
     reached = -1
+    ep_return = 0
     episodeAcs = []
     episodeObs = []
     episodeRews = []
@@ -118,16 +133,16 @@ def goToGoal(env, lastObs):
             while (np.absolute(difference[joint]) > env.minDisplacement) and done == False:
                 #print ("Difference in goal for joint : ", joint, " = ", difference[joint] , " and current is : ", lastObs[joint], " and desired ", goalPosition[joint] )
                 if difference[joint] > 0: #take negative action, backward
-                    action = actionMapping([joint, 1])  
+                    action = actionMapping(env, [joint, -1])  
                 elif difference[joint] < 0: #take positive action, forward
-                    action = actionMapping([joint, 0])
+                    action = actionMapping(env, [joint, 1])
                 else: #take no action
                     None
-                obsData, reward, done, badDataFlag = env.step(action)
+                obsData, reward, done, badDataFlag, moved = env.step(action)
                 if badDataFlag: 
                     print ("starting again due to bad data ")
                     break
-                if np.absolute(reward) > 0.001:
+                if moved:#(np.absolute(reward) > 0.001) and moved:
                     #print ("Reward received :", reward)
                     episodeAcs.append(action)
                     episodeObs.append(obsData)
@@ -145,7 +160,7 @@ def goToGoal(env, lastObs):
                 print ("starting again due to bad data 2 ")
                 break
 
-            if np.absolute(difference[joint]) < env.minDisplacementCheck:
+            if np.absolute(difference[joint]) < env.minDisplacement:
                 #print ("Difference particular joint  ", np.absolute(difference[joint]), env.minDisplacementCheck, np.absolute(difference[joint]) < env.minDisplacementCheck )
                 reached = joint
                 print ("Goal position reached for joint number ", joint)

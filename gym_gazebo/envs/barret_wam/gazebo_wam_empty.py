@@ -30,22 +30,22 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         #self.vel_pub = rospy.Publisher('/mobile_base/commands/velocity', Twist, queue_size=5)
         self.publishers = ['pub1', 'pub2', 'pub3', 'pub4', 'pub5', 'pub6', 'pub7']
 
-        self.pub1 = rospy.Publisher('/iri_wam/joint1_position_controller/command', Float64, queue_size=5)
-        self.pub2 = rospy.Publisher('/iri_wam/joint2_position_controller/command', Float64, queue_size=5)
-        self.pub3 = rospy.Publisher('/iri_wam/joint3_position_controller/command', Float64, queue_size=5)
-        self.pub4 = rospy.Publisher('/iri_wam/joint4_position_controller/command', Float64, queue_size=5)
-        self.pub5 = rospy.Publisher('/iri_wam/joint5_position_controller/command', Float64, queue_size=5)
-        self.pub6 = rospy.Publisher('/iri_wam/joint6_position_controller/command', Float64, queue_size=5)
-        self.pub7 = rospy.Publisher('/iri_wam/joint7_position_controller/command', Float64, queue_size=5) # discretely publishing motor actions for now
+        self.publishers[0] = rospy.Publisher('/iri_wam/joint1_position_controller/command', Float64, queue_size=5)
+        self.publishers[1] = rospy.Publisher('/iri_wam/joint2_position_controller/command', Float64, queue_size=5)
+        self.publishers[2] = rospy.Publisher('/iri_wam/joint3_position_controller/command', Float64, queue_size=5)
+        self.publishers[3] = rospy.Publisher('/iri_wam/joint4_position_controller/command', Float64, queue_size=5)
+        self.publishers[4] = rospy.Publisher('/iri_wam/joint5_position_controller/command', Float64, queue_size=5)
+        self.publishers[5] = rospy.Publisher('/iri_wam/joint6_position_controller/command', Float64, queue_size=5)
+        self.publishers[6] = rospy.Publisher('/iri_wam/joint7_position_controller/command', Float64, queue_size=5) # discretely publishing motor actions for now
         self.pubMarker = rospy.Publisher('/goalPose', Marker, queue_size=100)
 
         self.unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
         self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
         self.reset_proxy = rospy.ServiceProxy('/gazebo/reset_simulation', Empty)
-        self.minDisplacement = None
-        self.minDisplacementPose = None
-        self.baseFrame = None
-        self.waitTime = None
+        self.minDisplacement = 0.09
+        #self.minDisplacementPose = 0.09
+        self.baseFrame = 'iri_wam_link_base'
+        self.waitTime = 15
         self.homingTime = 5
 
         self.home = np.zeros(7)
@@ -53,14 +53,14 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.Actuallow = np.array([-2.5, -1.9, -2.7, -0.8, -4.66, -1.47, -3])
         self.high = np.array([2.0, 1.5, 2.0, 2.5, 1.0, 1.47, 3])
         self.low = np.array([-2.0, -1.5, -2.0, -0.5, -4.0, -1.47, -3])
-        self.minDisplacementCheck = 0.09
-        self.checkDisplacement = np.array([self.minDisplacementCheck, self.minDisplacementCheck, self.minDisplacementCheck, self.minDisplacementCheck, self.minDisplacementCheck, self.minDisplacementCheck, self.minDisplacementCheck])
+        #self.lowAction = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+        self.highAction = np.array([3, 3, 3, 3, 3, 3, 3])
+        self.checkDisplacement = np.array([self.minDisplacement, self.minDisplacement, self.minDisplacement, self.minDisplacement, self.minDisplacement, self.minDisplacement, self.minDisplacement])
 
-        self.envelopeAugmented = self.high - self.low 
         self.lastObservation = None
 
         #self.action_space = spaces.MultiBinary(7)
-        self.action_space = spaces.Discrete(14)
+        self.action_space = spaces.Box(-self.highAction, self.highAction)
         self.observation_space = spaces.Box(np.concatenate((self.low,self.low), axis=0), np.concatenate((self.high,self.high), axis=0))
         self.reward_range = (-np.inf, np.inf)
 
@@ -87,11 +87,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
         tempTemp = [tempPoseFK.pose.pose.position.x, tempPoseFK.pose.pose.position.y, tempPoseFK.pose.pose.position.z, tempPoseFK.pose.pose.orientation.x, tempPoseFK.pose.pose.orientation.y, tempPoseFK.pose.pose.orientation.z, tempPoseFK.pose.pose.orientation.w]
 
-        #print (tempPoseFK)
-        
-
-
-        return np.array(tempTemp), tempPoseFK
+        return np.array(tempTemp)
 
     def _seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -100,9 +96,8 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
     def _step(self, action):
 
         lastObs = self.lastObservation[:np.shape(self.high)[0]] # only the first seven observations, rest 7 give the goal 
-        lastObsForward = (lastObs + self.minDisplacement)
-        lastObsBackward = (lastObs - self.minDisplacement)
-
+    
+        moved = False
         goalState = self.lastObservation[np.shape(self.high)[0]:] # the goal information was contained in the state observation
 
         pointToPose = Point()
@@ -138,21 +133,40 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         except (rospy.ServiceException) as e:
             print ("/gazebo/unpause_physics service call failed")
 
-        if action == 0: self.pub1.publish(lastObsForward[0])
-        elif action == 1: self.pub2.publish(lastObsForward[1])
-        elif action == 2: self.pub3.publish(lastObsForward[2])
-        elif action == 3: self.pub4.publish(lastObsForward[3])
-        elif action == 4: self.pub5.publish(lastObsForward[4])
-        elif action == 5: self.pub6.publish(lastObsForward[5])
-        elif action == 6: self.pub7.publish(lastObsForward[6])
-        elif action == 7: self.pub1.publish(lastObsBackward[0])
-        elif action == 8: self.pub2.publish(lastObsBackward[1])
-        elif action == 9: self.pub3.publish(lastObsBackward[2])
-        elif action == 10: self.pub4.publish(lastObsBackward[3])
-        elif action == 11: self.pub5.publish(lastObsBackward[4])
-        elif action == 12: self.pub6.publish(lastObsBackward[5])
-        elif action == 13: self.pub7.publish(lastObsBackward[6])
+        #print ("action received ", action )
+
+        #print ("action received type ", type(actionU) )
+
+        tempLastObs = np.copy(lastObs)
+        for num, joint in enumerate(action):
+            for itr in range(np.absolute(round(joint/self.minDisplacement))):
+                self.publishers[num].publish(tempLastObs[num] + (joint/np.absolute(joint)) * self.minDisplacement)
+                tempLastObs[num] = tempLastObs[num] + (joint/np.absolute(joint)) * self.minDisplacement
+                
+
+
+        # if   (action ==[0, 0, 0, 0]).all(): self.pub1.publish(lastObsForward[0])
+        # elif (action ==[0, 0, 0, 1]).all(): self.pub2.publish(lastObsForward[1])
+        # elif (action ==[0, 0, 1, 0]).all(): self.pub3.publish(lastObsForward[2])
+        # elif (action ==[0, 0, 1, 1]).all(): self.pub4.publish(lastObsForward[3])
+        # elif (action ==[0, 1, 0, 0]).all(): self.pub5.publish(lastObsForward[4])
+        # elif (action ==[0, 1, 0, 1]).all(): self.pub6.publish(lastObsForward[5])
+        # elif (action ==[0, 1, 1, 0]).all(): self.pub7.publish(lastObsForward[6])
+        # elif (action ==[0, 1, 1, 1]).all(): self.pub1.publish(lastObsBackward[0])
+        # elif (action ==[1, 0, 0, 0]).all(): self.pub2.publish(lastObsBackward[1])
+        # elif (action ==[1, 0, 0, 1]).all(): self.pub3.publish(lastObsBackward[2])
+        # elif (action ==[1, 0, 1, 0]).all(): self.pub4.publish(lastObsBackward[3])
+        # elif (action ==[1, 0, 1, 1]).all(): self.pub5.publish(lastObsBackward[4])
+        # elif (action ==[1, 1, 0, 0]).all(): self.pub6.publish(lastObsBackward[5])
+        # elif (action ==[1, 1, 0, 1]).all(): self.pub7.publish(lastObsBackward[6])
         
+        def roundOffList(lyst):
+            newLyst = []
+            for i in lyst:
+                newLyst.append(round(i, 2))
+
+            return np.array(newLyst)
+
 
         data = None
         while data is None:
@@ -161,23 +175,27 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
                 if (np.array(data.position)<=self.high).all() and (np.array(data.position)>=self.low).all():
                     stateArms = np.array(data.position)
                     state = np.concatenate((stateArms, goalState), axis=0) # get a random goal every time you reset
+                    if (roundOffList(lastObs) != roundOffList(stateArms)).any(): 
+                        moved = True
                     self.lastObservation = state
                 else:
                     data = None
                     print ("Bad observation data received " )
                     badDataFlag = True
                     for joint in range(7):
-                        self.pub1.publish(self.home[joint]) #homing at every reset
-                        self.pub2.publish(self.home[joint])
-                        self.pub3.publish(self.home[joint])
-                        self.pub4.publish(self.home[joint])
-                        self.pub5.publish(self.home[joint])
-                        self.pub6.publish(self.home[joint])
-                        self.pub7.publish(self.home[joint])
+                        self.publishers[joint].publish(self.home[joint]) #homing at every reset
+                        # self.pub2.publish(self.home[joint])
+                        # self.pub3.publish(self.home[joint])
+                        # self.pub4.publish(self.home[joint])
+                        # self.pub5.publish(self.home[joint])
+                        # self.pub6.publish(self.home[joint])
+                        # self.pub7.publish(self.home[joint])
 
                     time.sleep(self.homingTime)
             except:
                 pass
+
+        
 
         rospy.wait_for_service('/gazebo/pause_physics')
         try:
@@ -214,12 +232,12 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         goalArmDifference = LA.norm(np.array([stateArmsPose.pose.pose.position.x, stateArmsPose.pose.pose.position.y, stateArmsPose.pose.pose.position.z]) - np.array([goalStatePose.position.x, goalStatePose.position.y, goalStatePose.position.z]))
         
 
-        diff = goalArmDifferenceLast - goalArmDifference
+        diff = goalArmDifferenceLast - goalArmDifference 
         reward = diff
 
         #print ("Difference Total ", np.absolute(stateArms - goalState), ( np.absolute(stateArms - goalState) <= self.checkDisplacement).all() )
         #print(" gooal arm difference :", goalArmDifference)
-        if ( goalArmDifference <= self.minDisplacementPose ):
+        if ( goalArmDifference <= self.minDisplacement ):
             #print ("Difference Total ", np.absolute(stateArms - goalState), ( np.absolute(stateArms - goalState) <= self.checkDisplacement).all() )
             done = True
             reward += 10
@@ -229,7 +247,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
 
 
-        return state, reward, done, badDataFlag
+        return state, reward, done, badDataFlag, moved
 
 
     def _reset(self):
@@ -262,23 +280,18 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
 
         for joint in range(7):
-            self.pub1.publish(self.home[joint]) #homing at every reset
-            self.pub2.publish(self.home[joint])
-            self.pub3.publish(self.home[joint])
-            self.pub4.publish(self.home[joint])
-            self.pub5.publish(self.home[joint])
-            self.pub6.publish(self.home[joint])
-            self.pub7.publish(self.home[joint])
+            self.publishers[joint].publish(self.home[joint]) #homing at every reset
 
         data = None
+        stateFull = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
         #state = None
-        while data is None:
+        while (data is None):
             try:
                 data = rospy.wait_for_message('/joint_states', JointState, timeout=10)
                 if (np.array(data.position)<=self.high).all() and (np.array(data.position)>=self.low).all():
                     state = np.array(data.position)
-                    goalArray, goalPose = self.getRandomGoal()
-                    stateFull = np.concatenate((state, goalArray), axis=0) # get a random goal every time you reset
+                    #goalArray, goalPose = self.getRandomGoal()
+                    stateFull = np.concatenate((state, self.getRandomGoal()), axis=0) # get a random goal every time you reset
                     self.lastObservation = stateFull
                     print("New Goal received!")
                     
@@ -287,13 +300,8 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
                     data = None
                     print ("Bad observation data received " )
                     for joint in range(7):
-                        self.pub1.publish(self.home[joint]) #homing at every reset
-                        self.pub2.publish(self.home[joint])
-                        self.pub3.publish(self.home[joint])
-                        self.pub4.publish(self.home[joint])
-                        self.pub5.publish(self.home[joint])
-                        self.pub6.publish(self.home[joint])
-                        self.pub7.publish(self.home[joint])
+                        self.publishers[joint].publish(self.home[joint]) #homing at every reset
+
                     time.sleep(self.homingTime)
             except:
                 pass
@@ -308,4 +316,5 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
          #send the observed state to the robot
 
+        #print ("State after reset si XXXXXXXXXXXXXXXXXXXXCCCCCCCCCCCCCCCCCCCCCCCC", stateFull )
         return stateFull
