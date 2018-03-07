@@ -46,21 +46,21 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.minDisplacementPose = 0.1
         self.baseFrame = 'iri_wam_link_base'
         self.waitTime = 15
-        self.homingTime = 5
+        self.homingTime = 3
 
         self.home = np.zeros(7)
         self.Actualhigh = np.array([2.5, 1.9, 2.7, 3.0, 1.14, 1.47, 3])
         self.Actuallow = np.array([-2.5, -1.9, -2.7, -0.8, -4.66, -1.47, -3])
         self.high = np.array([2.0, 1.5, 2.0, 2.5, 1.0, 1.47, 3])
         self.low = np.array([-2.0, -1.5, -2.0, -0.5, -4.0, -1.47, -3])
-        #self.lowAction = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-        self.highAction = np.array([3, 3, 3, 3, 3, 3, 3])
+        self.lowAction = [-1, -1, -1, -1, -1, -1, -1]
+        self.highAction = [1, 1, 1, 1, 1, 1, 1]
         self.checkDisplacement = np.array([self.minDisplacement, self.minDisplacement, self.minDisplacement, self.minDisplacement, self.minDisplacement, self.minDisplacement, self.minDisplacement])
 
         self.lastObservation = None
 
         #self.action_space = spaces.MultiBinary(7)
-        self.action_space = spaces.Box(-self.highAction, self.highAction)
+        self.action_space = spaces.Box(low=np.array(self.lowAction), high=np.array(self.highAction))
         self.observation_space = spaces.Box(np.concatenate((self.low,self.low), axis=0), np.concatenate((self.high,self.high), axis=0))
         self.reward_range = (-np.inf, np.inf)
 
@@ -143,15 +143,18 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         except (rospy.ServiceException) as e:
             print ("/gazebo/unpause_physics service call failed")
 
-        #print ("action received ", action )
+        print ("action received ", action )
 
         #print ("action received type ", type(actionU) )
 
         tempLastObs = np.copy(lastObs)
         for num, joint in enumerate(action):
-            for itr in range(np.absolute(round(joint/self.minDisplacement))):
+            #print ("sheet ", np.absolute(round(joint/self.minDisplacement)))
+            for itr in range(int(np.absolute(round(ajoint/self.minDisplacement)))):
                 self.publishers[num].publish(tempLastObs[num] + (joint/np.absolute(joint)) * self.minDisplacement)
                 tempLastObs[num] = tempLastObs[num] + (joint/np.absolute(joint)) * self.minDisplacement
+                time.sleep(0.05)
+        print ("position expecte4d to go to using actions ", tempLastObs)
                 
 
 
@@ -182,7 +185,8 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         while data is None:
             try:
                 data = rospy.wait_for_message('/joint_states', JointState, timeout=10)
-                if (np.array(data.position)<=self.high).all() and (np.array(data.position)>=self.low).all():
+                print ("position data received through service ", data.position, (np.array(data.position)<=self.Actualhigh).all(), (np.array(data.position)>=self.Actuallow).all())
+                if (np.array(data.position)<=self.Actualhigh).all() and (np.array(data.position)>=self.Actuallow).all():
                     stateArms = np.array(data.position)
                     state = np.concatenate((stateArms, goalState), axis=0) # get a random goal every time you reset
                     if (roundOffList(lastObs) != roundOffList(stateArms)).any(): 
@@ -190,7 +194,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
                     self.lastObservation = state
                 else:
                     data = None
-                    print ("Bad observation data received " )
+                    print ("Bad observation data received STEP" )
                     badDataFlag = True
                     for joint in range(7):
                         self.publishers[joint].publish(self.home[joint]) #homing at every reset
@@ -226,17 +230,20 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         goalStatePose.orientation.z = goalState[5]
         goalStatePose.orientation.w = goalState[6]
 
-        tempJointState = JointState()
-        tempJointState.header.frame_id = self.baseFrame
-        tempJointState.position = lastObs.tolist()
-        lastObsPose = self.getForwardKinematics(tempJointState)
 
+        lastObsPose = None
+        while lastObsPose==None:
+            tempJointState = JointState()
+            tempJointState.header.frame_id = self.baseFrame
+            tempJointState.position = lastObs.tolist()
+            lastObsPose = self.getForwardKinematics(tempJointState)
 
-
-        tempJointState2 = JointState()
-        tempJointState2.header.frame_id = self.baseFrame
-        tempJointState2.position = stateArms.tolist()
-        stateArmsPose = self.getForwardKinematics(tempJointState2)
+        stateArmsPose = None
+        while stateArmsPose==None:
+            tempJointState2 = JointState()
+            tempJointState2.header.frame_id = self.baseFrame
+            tempJointState2.position = stateArms.tolist()
+            stateArmsPose = self.getForwardKinematics(tempJointState2)
 
         goalArmDifferenceLast = LA.norm(np.array([lastObsPose.pose.pose.position.x, lastObsPose.pose.pose.position.y, lastObsPose.pose.pose.position.z]) - np.array([goalStatePose.position.x, goalStatePose.position.y, goalStatePose.position.z]))
         goalArmDifference = LA.norm(np.array([stateArmsPose.pose.pose.position.x, stateArmsPose.pose.pose.position.y, stateArmsPose.pose.pose.position.z]) - np.array([goalStatePose.position.x, goalStatePose.position.y, goalStatePose.position.z]))
@@ -257,7 +264,8 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
 
 
-        return state, reward, done, badDataFlag, moved
+        ##return state, reward, done, badDataFlag, moved
+        return state, reward, done, {}
 
 
     def _reset(self):
