@@ -60,7 +60,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.lastObservation = None
 
         #self.action_space = spaces.MultiBinary(7)
-        self.action_space = spaces.Box(low=np.array(self.lowAction), high=np.array(self.highAction))
+        self.action_space = spaces.MultiBinary(14)
         self.observation_space = spaces.Box(np.concatenate((self.low,self.low), axis=0), np.concatenate((self.high,self.high), axis=0))
         self.reward_range = (-np.inf, np.inf)
 
@@ -143,35 +143,16 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         except (rospy.ServiceException) as e:
             print ("/gazebo/unpause_physics service call failed")
 
-        print ("action received ", action )
-
-        #print ("action received type ", type(actionU) )
+        #print ("action received ", action )
 
         tempLastObs = np.copy(lastObs)
         for num, joint in enumerate(action):
-            #print ("sheet ", np.absolute(round(joint/self.minDisplacement)))
-            for itr in range(int(np.absolute(round(ajoint/self.minDisplacement)))):
-                self.publishers[num].publish(tempLastObs[num] + (joint/np.absolute(joint)) * self.minDisplacement)
-                tempLastObs[num] = tempLastObs[num] + (joint/np.absolute(joint)) * self.minDisplacement
-                time.sleep(0.05)
-        print ("position expecte4d to go to using actions ", tempLastObs)
+            if int(joint)==1 and num<int(len(action)/2): 
+                self.publishers[num].publish(tempLastObs[num] + self.minDisplacement)
+            elif int(joint)==1 and num>=int(len(action)/2): 
+                self.publishers[num-int(len(action)/2)].publish(tempLastObs[num-int(len(action)/2)] - self.minDisplacement)
+            #time.sleep(0.05)
                 
-
-
-        # if   (action ==[0, 0, 0, 0]).all(): self.pub1.publish(lastObsForward[0])
-        # elif (action ==[0, 0, 0, 1]).all(): self.pub2.publish(lastObsForward[1])
-        # elif (action ==[0, 0, 1, 0]).all(): self.pub3.publish(lastObsForward[2])
-        # elif (action ==[0, 0, 1, 1]).all(): self.pub4.publish(lastObsForward[3])
-        # elif (action ==[0, 1, 0, 0]).all(): self.pub5.publish(lastObsForward[4])
-        # elif (action ==[0, 1, 0, 1]).all(): self.pub6.publish(lastObsForward[5])
-        # elif (action ==[0, 1, 1, 0]).all(): self.pub7.publish(lastObsForward[6])
-        # elif (action ==[0, 1, 1, 1]).all(): self.pub1.publish(lastObsBackward[0])
-        # elif (action ==[1, 0, 0, 0]).all(): self.pub2.publish(lastObsBackward[1])
-        # elif (action ==[1, 0, 0, 1]).all(): self.pub3.publish(lastObsBackward[2])
-        # elif (action ==[1, 0, 1, 0]).all(): self.pub4.publish(lastObsBackward[3])
-        # elif (action ==[1, 0, 1, 1]).all(): self.pub5.publish(lastObsBackward[4])
-        # elif (action ==[1, 1, 0, 0]).all(): self.pub6.publish(lastObsBackward[5])
-        # elif (action ==[1, 1, 0, 1]).all(): self.pub7.publish(lastObsBackward[6])
         
         def roundOffList(lyst):
             newLyst = []
@@ -185,8 +166,8 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         while data is None:
             try:
                 data = rospy.wait_for_message('/joint_states', JointState, timeout=10)
-                print ("position data received through service ", data.position, (np.array(data.position)<=self.Actualhigh).all(), (np.array(data.position)>=self.Actuallow).all())
-                if (np.array(data.position)<=self.Actualhigh).all() and (np.array(data.position)>=self.Actuallow).all():
+                #sprint ("position data received through service ", data.position, (np.array(data.position)<=self.Actualhigh).all(), (np.array(data.position)>=self.Actuallow).all())
+                if (np.array(data.position)<=self.high).all() and (np.array(data.position)>=self.low).all():
                     stateArms = np.array(data.position)
                     state = np.concatenate((stateArms, goalState), axis=0) # get a random goal every time you reset
                     if (roundOffList(lastObs) != roundOffList(stateArms)).any(): 
@@ -198,12 +179,6 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
                     badDataFlag = True
                     for joint in range(7):
                         self.publishers[joint].publish(self.home[joint]) #homing at every reset
-                        # self.pub2.publish(self.home[joint])
-                        # self.pub3.publish(self.home[joint])
-                        # self.pub4.publish(self.home[joint])
-                        # self.pub5.publish(self.home[joint])
-                        # self.pub6.publish(self.home[joint])
-                        # self.pub7.publish(self.home[joint])
 
                     time.sleep(self.homingTime)
             except:
@@ -264,8 +239,8 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
 
 
-        ##return state, reward, done, badDataFlag, moved
-        return state, reward, done, {}
+        return state, reward, done, badDataFlag, moved
+        ##return state, reward, done, {}
 
 
     def _reset(self):
@@ -334,5 +309,4 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
          #send the observed state to the robot
 
-        #print ("State after reset si XXXXXXXXXXXXXXXXXXXXCCCCCCCCCCCCCCCCCCCCCCCC", stateFull )
         return stateFull

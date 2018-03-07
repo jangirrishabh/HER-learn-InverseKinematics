@@ -87,25 +87,13 @@ def getInverseKinematics(env, goalPose): #get joint angles for reaching the goal
 
 
 def actionMapping(env, ac):
-    trueAction = ac[0] + ac[1]*7
+    #trueAction = ac[0] + ac[1]*7
 
-    action = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-
-    action[ac[0]] = env.minDisplacement*ac[1]
-    # if   Taction == 0: trueAction = np.array([0, 0, 0, 0])
-    # elif Taction == 1: trueAction = np.array([0, 0, 0, 1])
-    # elif Taction == 2: trueAction = np.array([0, 0, 1, 0])
-    # elif Taction == 3: trueAction = np.array([0, 0, 1, 1])
-    # elif Taction == 4: trueAction = np.array([0, 1, 0, 0])
-    # elif Taction == 5: trueAction = np.array([0, 1, 0, 1])
-    # elif Taction == 6: trueAction = np.array([0, 1, 1, 0])
-    # elif Taction == 7: trueAction = np.array([0, 1, 1, 1])
-    # elif Taction == 8: trueAction = np.array([1, 0, 0, 0])
-    # elif Taction == 9: trueAction = np.array([1, 0, 0, 1])
-    # elif Taction == 10: trueAction = np.array([1, 0, 1, 0])
-    # elif Taction == 11: trueAction = np.array([1, 0, 1, 1])
-    # elif Taction == 12: trueAction = np.array([1, 1, 0, 0])
-    # elif Taction == 13: trueAction = np.array([1, 1, 0, 1])
+    action = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    if ac[1]==1:
+        action[ac[0]]=1
+    elif ac[1]==0:
+         action[ac[0]+7]=1
 
     return action
 
@@ -136,7 +124,7 @@ def goToGoal(env, lastObs):
             while (np.absolute(difference[joint]) > env.minDisplacement) and done == False:
                 #print ("Difference in goal for joint : ", joint, " = ", difference[joint] , " and current is : ", lastObs[joint], " and desired ", goalPosition[joint] )
                 if difference[joint] > 0: #take negative action, backward
-                    action = actionMapping(env, [joint, -1])  
+                    action = actionMapping(env, [joint, 0])  
                 elif difference[joint] < 0: #take positive action, forward
                     action = actionMapping(env, [joint, 1])
                 else: #take no action
