@@ -46,13 +46,20 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.minDisplacementPose = 0.1
         self.baseFrame = 'iri_wam_link_base'
         self.waitTime = 15
-        self.homingTime = 3
+        self.homingTime = 0.5
 
         self.home = np.zeros(7)
-        self.Actualhigh = np.array([2.5, 1.9, 2.7, 3.0, 1.14, 1.47, 3])
-        self.Actuallow = np.array([-2.5, -1.9, -2.7, -0.8, -4.66, -1.47, -3])
-        self.high = np.array([2.0, 1.5, 2.0, 2.5, 1.0, 1.47, 3])
-        self.low = np.array([-2.0, -1.5, -2.0, -0.5, -4.0, -1.47, -3])
+        self.Xacrohigh = np.array([2.6, 2.0, 2.8, 3.1, 1.24, 1.57, 2.96])
+        self.Xacrolow = np.array([-2.6, -2.0, -2.8, -0.9, -4.76, -1.57, -2.96])
+        self.IKlow = np.array([-2.6, -1.94, -2.73, -0.88, -4.74, -1.55, -2.98])
+        self.IKhigh = np.array([2.6, 1.94, 2.73, 3.08, 1.22, 1.55, 2.98])
+        
+        self.low = np.array([-2.6, -1.42, -2.73, -0.88, -4.74, -1.55, -2.98])
+        self.high = np.array([2.6, 1.42, 2.73, 3.08, 1.22, 1.55, 2.98])
+
+        self.samplelow = np.array([-2.6, -1.4, -2.73, -0.88, -4.74, -1.55, -2.98])
+        self.samplehigh = np.array([2.6, 1.4, 2.73, 3.08, 1.22, 1.55, 2.98])
+        #self.high = np.array([5.2, 2.8, 5.4, 3.96, 6.96, 3.1, 5.96])        
         self.lowAction = [-1, -1, -1, -1, -1, -1, -1]
         self.highAction = [1, 1, 1, 1, 1, 1, 1]
         self.checkDisplacement = np.array([self.minDisplacement, self.minDisplacement, self.minDisplacement, self.minDisplacement, self.minDisplacement, self.minDisplacement, self.minDisplacement])
@@ -84,7 +91,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
             #print ("in the while ")
             tempPosition = []
             for joint in range(7):
-                tempPosition.append(random.uniform(self.low[joint], self.high[joint]))
+                tempPosition.append(random.uniform(self.samplelow[joint], self.samplehigh[joint]))
 
 
 
@@ -105,10 +112,10 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
     def _step(self, action):
 
-        lastObs = self.lastObservation[:np.shape(self.high)[0]] # only the first seven observations, rest 7 give the goal 
+        lastObs = np.copy(self.lastObservation[:np.shape(self.high)[0]]) # only the first seven observations, rest 7 give the goal 
     
         moved = False
-        goalState = self.lastObservation[np.shape(self.high)[0]:] # the goal information was contained in the state observation
+        goalState = np.copy(self.lastObservation[np.shape(self.high)[0]:]) # the goal information was contained in the state observation
 
         pointToPose = Point()
         pointToPose.x = goalState[0]
@@ -143,16 +150,22 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         except (rospy.ServiceException) as e:
             print ("/gazebo/unpause_physics service call failed")
 
-        #print ("action received ", action )
+        print ("action received ", action )
 
         tempLastObs = np.copy(lastObs)
         for num, joint in enumerate(action):
             if int(joint)==1 and num<int(len(action)/2): 
                 self.publishers[num].publish(tempLastObs[num] + self.minDisplacement)
+                print (" joiunt number ", num+1, " moves forward")
+                time.sleep(3)
             elif int(joint)==1 and num>=int(len(action)/2): 
                 self.publishers[num-int(len(action)/2)].publish(tempLastObs[num-int(len(action)/2)] - self.minDisplacement)
+                print (" joiunt number ", num-int(len(action)/2) + 1, " moves backward")
+                time.sleep(3)
+            else: None
             #time.sleep(0.05)
-                
+        
+        print ("action sequence completed!!")
         
         def roundOffList(lyst):
             newLyst = []
@@ -163,24 +176,30 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
 
         data = None
+        stateArms = np.copy(lastObs)
+        state = np.copy(self.lastObservation)
         while data is None:
             try:
                 data = rospy.wait_for_message('/joint_states', JointState, timeout=10)
-                #sprint ("position data received through service ", data.position, (np.array(data.position)<=self.Actualhigh).all(), (np.array(data.position)>=self.Actuallow).all())
-                if (np.array(data.position)<=self.high).all() and (np.array(data.position)>=self.low).all():
-                    stateArms = np.array(data.position)
+                tempDataPosition = roundOffList(data.position)
+                data.position = np.copy(tempDataPosition)
+                if ((np.array(data.position)<=self.high).all()) and ((np.array(data.position)>=self.low).all()):
+                    stateArms = np.copy(np.array(data.position))
                     state = np.concatenate((stateArms, goalState), axis=0) # get a random goal every time you reset
                     if (roundOffList(lastObs) != roundOffList(stateArms)).any(): 
                         moved = True
                     self.lastObservation = state
                 else:
+                    print ("received some SHIT data ", data.position, (np.array(data.position[0])>=self.low[0]), (np.array(data.position[1])>=self.low[1]), (np.array(data.position[2])>=self.low[2]), (np.array(data.position[3])>=self.low[3]), (np.array(data.position[4])>=self.low[4]), (np.array(data.position[5])>=self.low[5]), (np.array(data.position[6])>=self.low[6]))
+                    print ("position data received through service ", self.low)
                     data = None
                     print ("Bad observation data received STEP" )
                     badDataFlag = True
                     for joint in range(7):
                         self.publishers[joint].publish(self.home[joint]) #homing at every reset
-
                     time.sleep(self.homingTime)
+                    #print ("Did I receive any data.position ", (((np.array(data.position)<=self.high).all()) and ((np.array(data.position)>=self.low).all())))
+                    #print ("received some SHIT data", data.position)
             except:
                 pass
 
@@ -212,6 +231,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
             tempJointState.header.frame_id = self.baseFrame
             tempJointState.position = lastObs.tolist()
             lastObsPose = self.getForwardKinematics(tempJointState)
+            if lastObsPose == None: print ("here is the fuck up in last pose, ", lastObs, lastObs.tolist(), len(lastObs.tolist())) 
 
         stateArmsPose = None
         while stateArmsPose==None:
@@ -219,6 +239,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
             tempJointState2.header.frame_id = self.baseFrame
             tempJointState2.position = stateArms.tolist()
             stateArmsPose = self.getForwardKinematics(tempJointState2)
+            if stateArmsPose == None: print ("here is the fuck up in state arms pose, ", stateArms, stateArms.tolist(), len(stateArms.tolist())) 
 
         goalArmDifferenceLast = LA.norm(np.array([lastObsPose.pose.pose.position.x, lastObsPose.pose.pose.position.y, lastObsPose.pose.pose.position.z]) - np.array([goalStatePose.position.x, goalStatePose.position.y, goalStatePose.position.z]))
         goalArmDifference = LA.norm(np.array([stateArmsPose.pose.pose.position.x, stateArmsPose.pose.pose.position.y, stateArmsPose.pose.pose.position.z]) - np.array([goalStatePose.position.x, goalStatePose.position.y, goalStatePose.position.z]))
@@ -237,10 +258,10 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         
 
 
+        print (" REWARD RECEIVED ", reward )
 
-
-        return state, reward, done, badDataFlag, moved
-        ##return state, reward, done, {}
+        #return state, reward, done, badDataFlag, moved  # uncomment when generating data though planning
+        return state, reward, done, {} # uncomment to train through gail
 
 
     def _reset(self):
@@ -287,8 +308,6 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
                     stateFull = np.concatenate((state, self.getRandomGoal()), axis=0) # get a random goal every time you reset
                     self.lastObservation = stateFull
                     print("New Goal received!")
-                    
-                    
                 else:
                     data = None
                     print ("Bad observation data received " )

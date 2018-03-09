@@ -31,7 +31,7 @@ def main():
     env.reset()
     print("Reset!")
     time.sleep(10)
-    while len(actions) < 100:
+    while len(actions) < 1500:
         obs = env.reset()
         print("Reset!")
         #randomGoalPosition = env.getRandomGoal()
@@ -110,17 +110,21 @@ def goToGoal(env, lastObs):
     episodeRews = []
     #badDataFlag = False
 
+    
+    elapsedTimes = [0, 0, 0, 0, 0, 0, 0]
+
     while done == False:
         if goalPosition == None: 
             print ("Inverse kinematics failed ")
             break
         badDataFlag = False
+        print ("resetting times ")
+        startTimes = [0, 0, 0, 0, 0, 0, 0]
         for joint in range(7):
-            episodeAcsTemp = np.zeros(env.action_space.shape[0])
-            episodeRewsTemp = 0
             obsData = env.lastObservation
             difference = lastObs[:np.shape(env.high)[0]] - goalPosition
             start_time = time.time()
+            startTimes[joint] = time.time()
             while (np.absolute(difference[joint]) > env.minDisplacement) and done == False:
                 #print ("Difference in goal for joint : ", joint, " = ", difference[joint] , " and current is : ", lastObs[joint], " and desired ", goalPosition[joint] )
                 if difference[joint] > 0: #take negative action, backward
@@ -135,9 +139,10 @@ def goToGoal(env, lastObs):
                     break
                 if moved:#(np.absolute(reward) > 0.001) and moved:
                     #print ("Reward received :", reward)
-                    episodeAcsTemp += action
-                    episodeRewsTemp += reward
                     ep_return += reward
+                    episodeObs.append(obsData)
+                    episodeRews.append(reward)
+                    episodeAcs.append(action)
                 lastObs = obsData[:np.shape(env.high)[0]]
                 difference = lastObs - goalPosition
                 elapsed_time = time.time() - start_time
@@ -146,27 +151,22 @@ def goToGoal(env, lastObs):
                     break
             
 
-            elapsed_time = time.time() - start_time
+            
             if badDataFlag: 
                 print ("starting again due to bad data 2 ")
                 break
 
+            #elapsed_time = time.time() - beginningTime
+            elapsedTimes[joint] = elapsedTimes[joint] + time.time() - startTimes[joint]
             if np.absolute(difference[joint]) < env.minDisplacement:
-                #print ("Difference particular joint  ", np.absolute(difference[joint]), env.minDisplacementCheck, np.absolute(difference[joint]) < env.minDisplacementCheck )
                 reached = joint
                 print ("Goal position reached for joint number ", joint)
-                episodeObs.append(obsData)
-                episodeRews.append(episodeRewsTemp)
-                episodeAcs.append(episodeAcsTemp)
-                print ("Action values appended for joint  ", joint, episodeAcsTemp)
-                print ("Reward values appended for joint  ", joint, episodeRewsTemp)
-                print ("observation values appended for joint  ", joint, obsData)
-
-            elif reached < 0 or elapsed_time > (env.waitTime*2) :
+                #startTimes[joint] = 0
+            elif reached < 0 or (elapsedTimes > np.full(np.shape(elapsedTimes), (env.waitTime*2)) ).any() :
                 print("Bad point, moving out of for loop")
                 break
             else: 
-                print("Moving to next joint ")
+                print("Moving to next joint ", "reached = ", reached, "elapsed time = ", elapsed_time, elapsedTimes, (elapsedTimes > np.full(np.shape(elapsedTimes), (env.waitTime*2)) ).any())
 
             if done==True :#and reached==6:
                 ep_returns.append(ep_return)
@@ -177,7 +177,7 @@ def goToGoal(env, lastObs):
                 print ("total episode actions lenght: ", len(episodeAcs))
                 print ("total episode observation length : ", len(episodeObs))
                 break
-            else: reached = 100
+            #else: reached = 100
 
         elapsed_time = time.time() - start_time
         if elapsed_time > env.waitTime: 

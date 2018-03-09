@@ -6,11 +6,11 @@
   <!-- these are the arguments you can pass this launch file, for example paused:=true -->
   <arg name="world"        default="empty"/>
   <arg name="use_sim_time" default="true"/>
-  <arg name="gui"          default="true"/>
+  <arg name="gui"          default="false"/>
   <arg name="paused"       value="true"/>
   <arg name="headless"     default="false"/>
   <arg name="debug"        default="false"/>
-  <arg name="rviz"         default="True" />
+  <arg name="rviz"         default="true" />
   <arg name="config"       default="model.rviz" />
 
 
