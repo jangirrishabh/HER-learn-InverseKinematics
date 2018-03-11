@@ -31,9 +31,10 @@ def main():
     env.reset()
     print("Reset!")
     time.sleep(10)
-    while len(actions) < 1500:
+    while len(actions) < 500:
         obs = env.reset()
         print("Reset!")
+        print("ITERATION NUMBER ", len(actions))
         #randomGoalPosition = env.getRandomGoal()
         #print("New Goal received!")
         goToGoal(env, obs)
@@ -89,11 +90,11 @@ def getInverseKinematics(env, goalPose): #get joint angles for reaching the goal
 def actionMapping(env, ac):
     #trueAction = ac[0] + ac[1]*7
 
-    action = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    action = [0, 0, 0, 0, 0, 0, 0]
     if ac[1]==1:
         action[ac[0]]=1
-    elif ac[1]==0:
-         action[ac[0]+7]=1
+    elif ac[1]==0: #backward
+         action[ac[0]]=-1
 
     return action
 

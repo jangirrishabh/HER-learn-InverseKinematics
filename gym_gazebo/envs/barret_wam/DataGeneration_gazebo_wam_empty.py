@@ -37,7 +37,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.publishers[4] = rospy.Publisher('/iri_wam/joint5_position_controller/command', Float64, queue_size=5)
         self.publishers[5] = rospy.Publisher('/iri_wam/joint6_position_controller/command', Float64, queue_size=5)
         self.publishers[6] = rospy.Publisher('/iri_wam/joint7_position_controller/command', Float64, queue_size=5) # discretely publishing motor actions for now
-        self.pubMarker = rospy.Publisher('/goalPose', Marker, queue_size=5)
+        self.pubMarker = rospy.Publisher('/goalPose', Marker, queue_size=100)
 
         self.unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
         self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
@@ -57,8 +57,8 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.low = np.array([-2.6, -1.42, -2.73, -0.88, -4.74, -1.55, -2.98])
         self.high = np.array([2.6, 1.42, 2.73, 3.08, 1.22, 1.55, 2.98])
 
-        self.samplelow = np.array([-2.0, -1.0, -2.03, -0.58, -4.04, -1.05, -2.08])
-        self.samplehigh = np.array([2.0, 1.0, 2.03, 2.08, 1.0, 1.05, 2.08])
+        self.samplelow = np.array([-2.6, -1.4, -2.73, -0.88, -4.74, -1.55, -2.98])
+        self.samplehigh = np.array([2.6, 1.4, 2.73, 3.08, 1.22, 1.55, 2.98])
         #self.high = np.array([5.2, 2.8, 5.4, 3.96, 6.96, 3.1, 5.96])        
         self.lowAction = [-1, -1, -1, -1, -1, -1, -1]
         self.highAction = [1, 1, 1, 1, 1, 1, 1]
@@ -152,18 +152,18 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         except (rospy.ServiceException) as e:
             print ("/gazebo/unpause_physics service call failed")
 
-        #print ("action received ", action )
+        print ("action received ", action )
 
         tempLastObs = np.copy(lastObs)
         for num, joint in enumerate(action):
             if joint>0 : 
                 self.publishers[num].publish(tempLastObs[num] + self.minDisplacement)
                 #print (" joiunt number ", num+1, " moves forward")
-                time.sleep(0.05)
+                #time.sleep(3)
             elif joint<0 : 
                 self.publishers[num].publish(tempLastObs[num] - self.minDisplacement)
                 #print (" joiunt number ", num+1, " moves backward")
-                time.sleep(0.05)
+                #time.sleep(3)
             else: None
             #time.sleep(0.05)
         
@@ -262,8 +262,8 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
         #print (" REWARD RECEIVED ", reward )
 
-        #return state, reward, done, badDataFlag, moved  # uncomment when generating data though planning
-        return state, reward, done, {} # uncomment to train through gail
+        return state, reward, done, badDataFlag, moved  # uncomment when generating data though planning
+        #return state, reward, done, {} # uncomment to train through gail
 
 
     def _reset(self):
