@@ -31,7 +31,7 @@ def main():
     env.reset()
     print("Reset!")
     time.sleep(10)
-    while len(actions) < 500:
+    while len(actions) < 200:
         obs = env.reset()
         print("Reset!")
         print("ITERATION NUMBER ", len(actions))
@@ -69,7 +69,7 @@ def getInverseKinematics(env, goalPose): #get joint angles for reaching the goal
     tempPose.position.z = goalPose[2]
     tempPose.orientation.x = goalPose[3]
     tempPose.orientation.y = goalPose[4]
-    tempPose.orientation.z = goalPose[5]
+    tempPose.orientation.z = goalPose[5] 
     tempPose.orientation.w = goalPose[6]
 
     #print (tempPose)
@@ -81,7 +81,7 @@ def getInverseKinematics(env, goalPose): #get joint angles for reaching the goal
         getIK = rospy.ServiceProxy('/iri_wam/iri_wam_ik/get_wam_ik', QueryInverseKinematics)
         jointPositionsReturned = getIK(goalPoseStamped)
         #print ("Returned by IK " , jointPositionsReturned)
-        return jointPositionsReturned.joints.position
+        return [jointPositionsReturned.joints.position[0], jointPositionsReturned.joints.position[1], jointPositionsReturned.joints.position[3]]
     except (rospy.ServiceException) as e:
         print ("Service call failed: %s"%e)
 
@@ -90,19 +90,23 @@ def getInverseKinematics(env, goalPose): #get joint angles for reaching the goal
 def actionMapping(env, ac):
     #trueAction = ac[0] + ac[1]*7
 
-    action = [0, 0, 0, 0, 0, 0, 0]
+    action = [0, 0, 0]
     if ac[1]==1:
         action[ac[0]]=1
     elif ac[1]==0: #backward
          action[ac[0]]=-1
 
-    return action
+    return np.array(action)
 
 
 def goToGoal(env, lastObs):
     done = False
-    goalPosition = getInverseKinematics(env, lastObs[np.shape(env.high)[0]:])
+    #goalPosition = getInverseKinematics(env, lastObs[(len(env.highConc)/2):])
+    goalPosition = None
+    
+    goalPosition = getInverseKinematics(env, lastObs[env.lenGoal:])
 
+    goalPositionConc = goalPosition
     
     reached = -1
     ep_return = 0
@@ -110,24 +114,24 @@ def goToGoal(env, lastObs):
     episodeObs = []
     episodeRews = []
     #badDataFlag = False
-
+    beginningTime = time.time()
     
-    elapsedTimes = [0, 0, 0, 0, 0, 0, 0]
+    elapsedTimes = [0, 0, 0]
 
     while done == False:
-        if goalPosition == None: 
+        if goalPositionConc == None: 
             print ("Inverse kinematics failed ")
             break
         badDataFlag = False
         print ("resetting times ")
-        startTimes = [0, 0, 0, 0, 0, 0, 0]
-        for joint in range(7):
+        startTimes = [0, 0, 0]
+        for joint in range(3):
             obsData = env.lastObservation
-            difference = lastObs[:np.shape(env.high)[0]] - goalPosition
+            difference = np.array(lastObs[:env.lenGoal]) - np.array(goalPositionConc)
             start_time = time.time()
             startTimes[joint] = time.time()
             while (np.absolute(difference[joint]) > env.minDisplacement) and done == False:
-                #print ("Difference in goal for joint : ", joint, " = ", difference[joint] , " and current is : ", lastObs[joint], " and desired ", goalPosition[joint] )
+                #print ("Difference in goal for joint : ", joint, " = ", difference[joint], done)
                 if difference[joint] > 0: #take negative action, backward
                     action = actionMapping(env, [joint, 0])  
                 elif difference[joint] < 0: #take positive action, forward
@@ -144,14 +148,13 @@ def goToGoal(env, lastObs):
                     episodeObs.append(obsData)
                     episodeRews.append(reward)
                     episodeAcs.append(action)
-                lastObs = obsData[:np.shape(env.high)[0]]
-                difference = lastObs - goalPosition
+                lastObs = obsData[:env.lenGoal]
+                difference = lastObs - goalPositionConc
                 elapsed_time = time.time() - start_time
                 if elapsed_time > env.waitTime: 
                     print("exiting from while loop")
                     break
             
-
             
             if badDataFlag: 
                 print ("starting again due to bad data 2 ")
@@ -169,7 +172,7 @@ def goToGoal(env, lastObs):
             else: 
                 print("Moving to next joint ", "reached = ", reached, "elapsed time = ", elapsed_time, elapsedTimes, (elapsedTimes > np.full(np.shape(elapsedTimes), (env.waitTime*2)) ).any())
 
-            if done==True :#and reached==6:
+            if done==True:#and reached==6:
                 ep_returns.append(ep_return)
                 actions.append(np.array(episodeAcs))
                 observations.append(np.array(episodeObs))
@@ -180,7 +183,7 @@ def goToGoal(env, lastObs):
                 break
             #else: reached = 100
 
-        elapsed_time = time.time() - start_time
+        elapsed_time = time.time() - beginningTime
         if elapsed_time > env.waitTime: 
             print("exiting from the main while loop")
             break
@@ -188,55 +191,6 @@ def goToGoal(env, lastObs):
         if badDataFlag: 
                 print ("starting again due to bad data 3 ")
                 break
-
-
-    # while done == False:
-    #     for joint in range(7):
-    #         difference = lastObs[:np.shape(env.high)[0]] - goalPosition
-    #         start_time = time.time()
-    #         while (np.absolute(difference[joint]) > env.minDisplacement) and done == False:
-    #             #print ("Difference in goal for joint : ", joint, " = ", difference[joint] , " and current is : ", lastObs[joint], " and desired ", goalPosition[joint] )
-    #             if difference[joint] > 0: #take negative action, backward
-    #                 action = actionMapping([joint, 1])  
-    #             elif difference[joint] < 0: #take positive action, forward
-    #                 action = actionMapping([joint, 0])
-    #             else: #take no action
-    #                 None
-    #             obsData, reward, done, info = env.step(action)
-    #             if np.absolute(reward) > 0.001:
-    #                 #print ("Reward received :", reward)
-    #                 episodeAcs.append(action)
-    #                 episodeObs.append(obsData)
-    #                 episodeRews.append(reward)
-    #                 ep_return += reward
-    #             lastObs = obsData[:np.shape(env.high)[0]]
-    #             difference = lastObs - goalPosition
-    #             elapsed_time = time.time() - start_time
-    #             if elapsed_time > env.waitTime: 
-    #                 print("exiting from while loop")
-    #                 break
-
-    #         if np.absolute(difference[joint]) < env.minDisplacementCheck:
-    #             #print ("Difference particular joint  ", np.absolute(difference[joint]), env.minDisplacementCheck, np.absolute(difference[joint]) < env.minDisplacementCheck )
-    #             reached = joint
-    #             print ("Goal position reached for joint number ", joint)
-    #         else:
-    #             print("exiting due to bad goal point")
-    #             break
-
-    #         if done==True :#and reached==6:
-    #             ep_returns.append(ep_return)
-    #             actions.append(np.array(episodeAcs))
-    #             observations.append(np.array(episodeObs))
-    #             rewards.append(np.array(episodeRews))
-    #             print ("total episode return: ", ep_return)
-    #             print ("total episode actions lenght: ", len(episodeAcs))
-    #             print ("total episode observation length : ", len(episodeObs))
-    #             break
-
-    #     if elapsed_time > env.waitTime: 
-    #         print("exiting from while loop")
-    #         break
         
 
 
