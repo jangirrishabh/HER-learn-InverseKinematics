@@ -49,7 +49,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.homingTime = 0.5
         self.lenGoal = 3
 
-        self.home = np.zeros(7)
+        self.home = np.zeros(4)
         self.Xacrohigh = np.array([2.6, 2.0, 2.8, 3.1, 1.24, 1.57, 2.96])
         self.Xacrolow = np.array([-2.6, -2.0, -2.8, -0.9, -4.76, -1.57, -2.96])
         self.IKlow = np.array([-2.6, -1.94, -2.73, -0.88, -4.74, -1.55, -2.98])
@@ -120,6 +120,24 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
     def _seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
         return [seed]
+
+    def homing(self):
+        rospy.wait_for_service('/gazebo/unpause_physics')
+        try:
+            self.unpause()
+        except (rospy.ServiceException) as e:
+            print ("/gazebo/unpause_physics service call failed")
+
+        for joint in range(3):
+            self.publishers[joint].publish(self.home[joint]) #homing at every reset
+        time.sleep(self.homingTime)
+        print ("HOMIED")
+
+        rospy.wait_for_service('/gazebo/pause_physics')
+        try:
+            self.pause()
+        except (rospy.ServiceException) as e:
+            print ("/gazebo/pause_physics service call failed")
 
     def _step(self, action):
 
@@ -210,7 +228,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
                     data = None
                     print ("Bad observation data received STEP" )
                     badDataFlag = True
-                    for joint in range(4):
+                    for joint in range(3):
                         self.publishers[joint].publish(self.home[joint]) #homing at every reset
                     time.sleep(self.homingTime)
                     #print ("Did I receive any data.position ", (((np.array(data.position)<=self.high).all()) and ((np.array(data.position)>=self.low).all())))
@@ -266,8 +284,8 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
         #print (" REWARD RECEIVED ", reward )
 
-        return state, reward, done, badDataFlag, moved  # uncomment when generating data though planning
-        #return state, reward, done, {} # uncomment to train through gail
+        return stateConc, reward, done, badDataFlag, moved  # uncomment when generating data though planning
+        #return stateConc, reward, done, {} # uncomment to train through gail
 
 
     def _reset(self):
@@ -299,7 +317,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
             print ("Service call failed: %s"%e)
 
 
-        for joint in range(7):
+        for joint in range(3):
             self.publishers[joint].publish(self.home[joint]) #homing at every reset
 
         data = None
@@ -321,7 +339,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
                 else:
                     data = None
                     print ("Bad observation data received " )
-                    for joint in range(4):
+                    for joint in range(3):
                         self.publishers[joint].publish(self.home[joint]) #homing at every reset
 
                     time.sleep(self.homingTime)
@@ -338,4 +356,4 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
          #send the observed state to the robot
 
-        return stateFull
+        return np.array(stateFull)

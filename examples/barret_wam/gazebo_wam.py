@@ -31,13 +31,16 @@ def main():
     env.reset()
     print("Reset!")
     time.sleep(10)
-    while len(actions) < 200:
+    while len(actions) < 100:
         obs = env.reset()
         print("Reset!")
         print("ITERATION NUMBER ", len(actions))
         #randomGoalPosition = env.getRandomGoal()
         #print("New Goal received!")
         goToGoal(env, obs)
+        time.sleep(0.5)
+        env.homing()
+        time.sleep(0.5)
         # action = randint(0, 13)
         # obsData, reward, done, info = env.step(action)
         #time.sleep(5)
@@ -69,7 +72,7 @@ def getInverseKinematics(env, goalPose): #get joint angles for reaching the goal
     tempPose.position.z = goalPose[2]
     tempPose.orientation.x = goalPose[3]
     tempPose.orientation.y = goalPose[4]
-    tempPose.orientation.z = goalPose[5] 
+    tempPose.orientation.z = goalPose[5]
     tempPose.orientation.w = goalPose[6]
 
     #print (tempPose)
@@ -169,8 +172,8 @@ def goToGoal(env, lastObs):
             elif reached < 0 or (elapsedTimes > np.full(np.shape(elapsedTimes), (env.waitTime*2)) ).any() :
                 print("Bad point, moving out of for loop")
                 break
-            else: 
-                print("Moving to next joint ", "reached = ", reached, "elapsed time = ", elapsed_time, elapsedTimes, (elapsedTimes > np.full(np.shape(elapsedTimes), (env.waitTime*2)) ).any())
+            else: None
+                #print("Moving to next joint ", "reached = ", reached, "elapsed time = ", elapsed_time, elapsedTimes, (elapsedTimes > np.full(np.shape(elapsedTimes), (env.waitTime*2)) ).any())
 
             if done==True:#and reached==6:
                 ep_returns.append(ep_return)
