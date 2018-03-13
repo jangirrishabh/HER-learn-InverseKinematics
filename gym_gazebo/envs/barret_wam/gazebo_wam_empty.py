@@ -48,6 +48,8 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.waitTime = 3
         self.homingTime = 0.5
         self.lenGoal = 3
+        self.REWARD = 1
+        self.rewScaleFactor = 100
 
         self.home = np.zeros(4)
         self.Xacrohigh = np.array([2.6, 2.0, 2.8, 3.1, 1.24, 1.57, 2.96])
@@ -187,11 +189,11 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
             if joint>0 : 
                 self.publishers[num].publish(tempLastObs[num] + self.minDisplacement)
                 #print (" joiunt number ", num+1, " moves forward")
-                #time.sleep(0.05)
+                time.sleep(0.1)
             elif joint<0 : 
                 self.publishers[num].publish(tempLastObs[num] - self.minDisplacement)
                 #print (" joiunt number ", num+1, " moves backward")
-                #time.sleep(0.05)
+                time.sleep(0.1)
             else: None
             #time.sleep(0.05)
         
@@ -270,22 +272,22 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         
 
         diff = goalArmDifferenceLast - goalArmDifference 
-        reward = diff
+        reward = diff* self.rewScaleFactor
 
         #print ("Difference Total ", np.absolute(stateArms - goalState), ( np.absolute(stateArms - goalState) <= self.checkDisplacement).all() )
         #print(" gooal arm difference :", goalArmDifference)
         if ( goalArmDifference <= (self.minDisplacementPose) ):
             #print ("Difference Total ", np.absolute(stateArms - goalState), ( np.absolute(stateArms - goalState) <= self.checkDisplacement).all() )
             done = True
-            reward += 1
+            reward += self.REWARD*self.rewScaleFactor
         else: done = False
         
 
 
         #print (" REWARD RECEIVED ", reward )
 
-        return stateConc, reward, done, badDataFlag, moved  # uncomment when generating data though planning
-        #return stateConc, reward, done, {} # uncomment to train through gail
+        #return stateConc, reward, done, badDataFlag, moved  # uncomment when generating data though planning
+        return stateConc, reward, done, {} # uncomment to train through gail
 
 
     def _reset(self):
@@ -317,8 +319,9 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
             print ("Service call failed: %s"%e)
 
 
-        for joint in range(3):
-            self.publishers[joint].publish(self.home[joint]) #homing at every reset
+        # for joint in range(3):
+        #     self.publishers[joint].publish(self.home[joint]) #homing at every reset
+        # time.sleep(self.homingTime)
 
         data = None
         state = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
@@ -356,4 +359,4 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
          #send the observed state to the robot
 
-        return np.array(stateFull)
+        return np.array(state)
