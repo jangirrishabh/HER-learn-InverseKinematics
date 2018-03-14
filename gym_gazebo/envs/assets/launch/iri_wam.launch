@@ -10,7 +10,7 @@
   <arg name="paused"       value="true"/>
   <arg name="headless"     default="false"/>
   <arg name="debug"        default="false"/>
-  <arg name="rviz"         default="false" />
+  <arg name="rviz"         default="true" />
   <arg name="config"       default="model.rviz" />
 
 

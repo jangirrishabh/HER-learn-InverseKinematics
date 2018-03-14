@@ -42,16 +42,19 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
         self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
         self.reset_proxy = rospy.ServiceProxy('/gazebo/reset_simulation', Empty)
-        self.minDisplacement = 0.09
-        self.minDisplacementPose = 0.14
-        self.baseFrame = 'iri_wam_link_base'
-        self.waitTime = 3
-        self.homingTime = 0.5
-        self.lenGoal = 3
-        self.REWARD = 1
-        self.rewScaleFactor = 100
+        self.minDisplacement = 0.09 #minimum discrete distance by a single action
+        self.minDisplacementPose = 0.14 # minimum distance to check for the goal reaching state
+        self.baseFrame = 'iri_wam_link_base' 
+        self.waitTime = 3 # time to wait for arm to reach a joint until its considered a bad point
+        self.homingTime = 0.5 # time given for homing
+        self.lenGoal = 3 # goal position list length
+        self.REWARD = 1 # reward received upon reachnig the goal
+        self.rewScaleFactor = 100 # multiply the rewards by this factor
+        self.actionTime = 0.07 #time delay after every published action
+        self.DATA = False
+        self.TRAIN = not self.DATA
 
-        self.home = np.zeros(4)
+        self.home = np.zeros(4) # what position is the homing
         self.Xacrohigh = np.array([2.6, 2.0, 2.8, 3.1, 1.24, 1.57, 2.96])
         self.Xacrolow = np.array([-2.6, -2.0, -2.8, -0.9, -4.76, -1.57, -2.96])
         self.IKlow = np.array([-2.6, -1.94, -2.73, -0.88, -4.74, -1.55, -2.98])
@@ -189,11 +192,11 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
             if joint>0 : 
                 self.publishers[num].publish(tempLastObs[num] + self.minDisplacement)
                 #print (" joiunt number ", num+1, " moves forward")
-                time.sleep(0.1)
+                if self.TRAIN: time.sleep(self.actionTime)
             elif joint<0 : 
                 self.publishers[num].publish(tempLastObs[num] - self.minDisplacement)
                 #print (" joiunt number ", num+1, " moves backward")
-                time.sleep(0.1)
+                if self.TRAIN: time.sleep(self.actionTime)
             else: None
             #time.sleep(0.05)
         
@@ -272,8 +275,9 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         
 
         diff = goalArmDifferenceLast - goalArmDifference 
-        reward = diff* self.rewScaleFactor
-
+        #print ("How far from thegoal ", goalArmDifference )
+        reward = (diff*(self.rewScaleFactor*10))/(1+ np.exp(goalArmDifference))
+        #print ("reaward received, ", reward, diff*(self.rewScaleFactor), 1/(1+ np.exp(goalArmDifference))  )
         #print ("Difference Total ", np.absolute(stateArms - goalState), ( np.absolute(stateArms - goalState) <= self.checkDisplacement).all() )
         #print(" gooal arm difference :", goalArmDifference)
         if ( goalArmDifference <= (self.minDisplacementPose) ):
@@ -286,8 +290,8 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
         #print (" REWARD RECEIVED ", reward )
 
-        #return stateConc, reward, done, badDataFlag, moved  # uncomment when generating data though planning
-        return stateConc, reward, done, {} # uncomment to train through gail
+        if self.DATA: return stateConc, reward, done, badDataFlag, moved  # uncomment when generating data though planning
+        elif self.TRAIN: return stateConc, reward, done, {} # uncomment to train through gail
 
 
     def _reset(self):
@@ -359,4 +363,5 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
          #send the observed state to the robot
 
-        return np.array(state)
+        if self.DATA: return np.array(stateFull)
+        if self.TRAIN: return np.array(state)

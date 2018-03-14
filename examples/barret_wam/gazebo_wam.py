@@ -31,7 +31,7 @@ def main():
     env.reset()
     print("Reset!")
     time.sleep(10)
-    while len(actions) < 1000:
+    while len(actions) < 100:
         obs = env.reset()
         print("Reset!")
         print("ITERATION NUMBER ", len(actions))
