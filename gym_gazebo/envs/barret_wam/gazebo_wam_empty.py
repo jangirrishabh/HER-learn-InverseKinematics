@@ -27,8 +27,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
     def __init__(self):
         # Launch the simulation with the given launchfile name
         gazebo_env.GazeboEnv.__init__(self, "iri_wam.launch")
-        #self.vel_pub = rospy.Publisher('/mobile_base/commands/velocity', Twist, queue_size=5)
-        self.publishers = ['pub1', 'pub2', 'pub4', 'pub3', 'pub5', 'pub6', 'pub7']
+        self.publishers = ['pub1', 'pub2', 'pub4', 'pub3', 'pub5', 'pub6', 'pub7'] #publishers for the motor commands
 
         self.publishers[0] = rospy.Publisher('/iri_wam/joint1_position_controller/command', Float64, queue_size=5)
         self.publishers[1] = rospy.Publisher('/iri_wam/joint2_position_controller/command', Float64, queue_size=5)
@@ -43,22 +42,23 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
         self.reset_proxy = rospy.ServiceProxy('/gazebo/reset_simulation', Empty)
         self.minDisplacement = 0.09 #minimum discrete distance by a single action
-        self.minDisplacementPose = 0.14 # minimum distance to check for the goal reaching state
+        self.minDisplacementPose = 0.10 # minimum distance to check for the goal reaching state
         self.baseFrame = 'iri_wam_link_base' 
-        self.waitTime = 3 # time to wait for arm to reach a joint until its considered a bad point
+        self.waitTime = 6 # time to wait for arm to reach a joint until its considered a bad point
         self.homingTime = 0.5 # time given for homing
         self.lenGoal = 3 # goal position list length
         self.REWARD = 1 # reward received upon reachnig the goal
-        self.rewScaleFactor = 100 # multiply the rewards by this factor
-        self.actionTime = 0.07 #time delay after every published action
-        self.DATA = False
+        self.rewScaleFactor = 10 # multiply the rewards by this factor
+        self.actionTime = 0.05 #time delay after every published action
+        self.DATA = 0
         self.TRAIN = not self.DATA
+        self.BC = not self.DATA
 
         self.home = np.zeros(4) # what position is the homing
-        self.Xacrohigh = np.array([2.6, 2.0, 2.8, 3.1, 1.24, 1.57, 2.96])
-        self.Xacrolow = np.array([-2.6, -2.0, -2.8, -0.9, -4.76, -1.57, -2.96])
-        self.IKlow = np.array([-2.6, -1.94, -2.73, -0.88, -4.74, -1.55, -2.98])
-        self.IKhigh = np.array([2.6, 1.94, 2.73, 3.08, 1.22, 1.55, 2.98])
+        # self.Xacrohigh = np.array([2.6, 2.0, 2.8, 3.1, 1.24, 1.57, 2.96])
+        # self.Xacrolow = np.array([-2.6, -2.0, -2.8, -0.9, -4.76, -1.57, -2.96])
+        # self.IKlow = np.array([-2.6, -1.94, -2.73, -0.88, -4.74, -1.55, -2.98])
+        # self.IKhigh = np.array([2.6, 1.94, 2.73, 3.08, 1.22, 1.55, 2.98])
         
         self.low = np.array([-2.6, -1.42, -2.73, -0.88, -4.74, -1.55, -2.98])
         self.high = np.array([2.6, 1.42, 2.73, 3.08, 1.22, 1.55, 2.98])
@@ -94,18 +94,25 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         except (rospy.ServiceException) as e:
             print ("Service call failed: %s"%e)
 
+
+    def getGripperPosition(self, joints):
+        frame_ID = self.baseFrame
+        tempJointState = JointState()
+        tempJointState.header.frame_id = self.baseFrame
+        tempJointState.position = joints
+
+        tempPoseFK = self.getForwardKinematics(tempJointState)
+
+        return [tempPoseFK.pose.pose.position.x, tempPoseFK.pose.pose.position.y, tempPoseFK.pose.pose.position.z]
+
     def getRandomGoal(self):  #sample from reachable positions
         frame_ID = self.baseFrame
-        
         tempPoseFK = None
-        #print ("getting a random goal ")
 
         while tempPoseFK==None:
-            #print ("in the while ")
             tempPosition = []
             for joint in range(4):
                 tempPosition.append(random.uniform(self.samplelow[joint], self.samplehigh[joint]))
-
 
             tempPosition.append(0)
             tempPosition.append(0)
@@ -115,9 +122,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
             tempJointState.header.frame_id = self.baseFrame
             tempJointState.position = tempPosition
 
-            #print ("temp position to be send ", tempJointState)
             tempPoseFK = self.getForwardKinematics(tempJointState)
-            #print ("tempPoseFK ", tempPoseFK)
             if tempPoseFK!=None:
                 tempTemp = [tempPoseFK.pose.pose.position.x, tempPoseFK.pose.pose.position.y, tempPoseFK.pose.pose.position.z, tempPoseFK.pose.pose.orientation.x, tempPoseFK.pose.pose.orientation.y, tempPoseFK.pose.pose.orientation.z, tempPoseFK.pose.pose.orientation.w]
                 return tempTemp
@@ -145,15 +150,108 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
             print ("/gazebo/pause_physics service call failed")
 
     def _step(self, action):
-
+        #print ("action received before4 clipping ", action )
         action = np.clip(action, self.action_space.low, self.action_space.high)
+        #print ("action received ", action )
 
-        lastObs = np.copy(self.lastObservation[:self.lenGoal]) # only the first seven observations, rest 7 give the goal 
+        lastObs = list(self.lastObservation[:self.lenGoal]) 
     
         moved = False
-        goalState = np.copy(self.lastObservation[self.lenGoal:]) # the goal information was contained in the state observation
-        goalStateFull = np.copy(self.lastObservationFull[self.lenGoal:])
+        badDataFlag = False
+        goalState = list(self.lastObservation[self.lenGoal:]) # the goal information was contained in the state observation
+        goalStateFull = list(self.lastObservationFull[(self.lenGoal*2):])
         assert len(goalState) == self.lenGoal
+        #print ("goalState :", goalState, type(goalState))
+        #print ("goalStateFull :", goalStateFull, type(goalStateFull))
+        
+
+        rospy.wait_for_service('/gazebo/unpause_physics')
+        try:
+            self.unpause()
+        except (rospy.ServiceException) as e:
+            print ("/gazebo/unpause_physics service call failed")
+
+
+        for num, joint in enumerate(action):
+            self.publishers[num].publish(lastObs[num] + joint)
+            if self.TRAIN: time.sleep(self.actionTime)
+
+        
+        def roundOffList(lyst):
+            newLyst = []
+            for i in lyst:
+                newLyst.append(round(i, 4))
+
+            return newLyst
+
+        data = None
+        state = list(self.lastObservationFull)
+        while data is None:
+            try:
+                data = rospy.wait_for_message('/joint_states', JointState, timeout=10)
+                gripperPos = self.getGripperPosition(data.position)
+                dataConc = [data.position[0], data.position[1], data.position[3]]
+                if ((np.array(dataConc)<=self.highConcObs).all()) and ((np.array(dataConc)>=self.lowConcObs).all()):
+                    stateConc = gripperPos + goalState # get a random goal every time you reset
+                    stateShort = dataConc + goalState
+                    state = dataConc + gripperPos + goalStateFull  # get a random goal every time you reset
+                    if (np.array(roundOffList(lastObs)) != np.array(roundOffList(dataConc))).any(): 
+                        moved = True
+                    self.lastObservation = stateShort
+                    self.lastObservationFull = state
+                else:
+                    data = None
+                    print ("Bad observation data received STEP" )
+                    badDataFlag = True
+                    for joint in range(3):
+                        self.publishers[joint].publish(self.home[joint]) #homing at every reset
+                    time.sleep(self.homingTime)
+            except:
+                pass
+
+
+        rospy.wait_for_service('/gazebo/pause_physics')
+        try:
+            self.pause()
+        except (rospy.ServiceException) as e:
+            print ("/gazebo/pause_physics service call failed")
+
+        # to calcualte the reward we need to know the current state as tcp point so use Fk for that
+
+
+        lastObsPose = None
+        while lastObsPose==None:
+            tempJointState = JointState()
+            tempJointState.header.frame_id = self.baseFrame
+            tempJointState.position = [lastObs[0], lastObs[1], 0, lastObs[2], 0, 0, 0]
+            lastObsPose = self.getForwardKinematics(tempJointState)
+            if lastObsPose == None: print ("here is the fuck up in last pose, ", lastObs, len(lastObs))
+
+        stateArmsPose = None
+        while stateArmsPose==None:
+            tempJointState2 = JointState()
+            tempJointState2.header.frame_id = self.baseFrame
+            tempJointState2.position = [dataConc[0], dataConc[1], 0, dataConc[2], 0, 0, 0]
+            stateArmsPose = self.getForwardKinematics(tempJointState2)
+            if stateArmsPose == None: print ("here is the fuck up in state arms pose, ", dataConc, ) 
+
+        goalArmDifferenceLast = LA.norm(np.array([lastObsPose.pose.pose.position.x, lastObsPose.pose.pose.position.y, lastObsPose.pose.pose.position.z]) - np.array([goalState[0], goalState[1], goalState[2]]))
+        goalArmDifference = LA.norm(np.array([stateArmsPose.pose.pose.position.x, stateArmsPose.pose.pose.position.y, stateArmsPose.pose.pose.position.z]) - np.array([goalState[0], goalState[1], goalState[2]]))
+        
+
+        diff = goalArmDifferenceLast - goalArmDifference 
+        #print ("How far from thegoal ", goalArmDifference )
+        if diff>0 and moved:
+            reward = ((self.rewScaleFactor))/(10*(1+ np.exp(goalArmDifference)))
+        elif diff<0 and moved:
+            reward = -((self.rewScaleFactor))/(10*(1 + np.exp(goalArmDifference)))
+        else:
+            reward = -self.REWARD*self.rewScaleFactor
+
+
+        #print ("reaward received, ", reward)
+        #print ("Difference Total ", np.absolute(stateArms - goalState), ( np.absolute(stateArms - goalState) <= self.checkDisplacement).all() )
+        #print(" gooal arm difference :", goalArmDifference)
 
         pointToPose = Point()
         pointToPose.x = goalState[0]
@@ -168,130 +266,38 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         markerObj.action = markerObj.ADD
         markerObj.pose.position = pointToPose
         markerObj.pose.orientation.w = 1.0
-        markerObj.color.r = 1.0
-        markerObj.color.a = 1.0
         markerObj.scale.x = 0.09
         markerObj.scale.y = 0.09
         markerObj.scale.z = 0.09
 
-        badDataFlag = False
+
+        if ( goalArmDifference <= (self.minDisplacementPose*3) ):
+            markerObj.color.g = 1.0
+            markerObj.color.a = 1.0
+
+        else: 
+            markerObj.color.r = 1.0
+            markerObj.color.a = 1.0
+            
 
         self.pubMarker.publish(markerObj)
-        #print ("marker object two")
-
-        rospy.wait_for_service('/gazebo/unpause_physics')
-        try:
-            self.unpause()
-        except (rospy.ServiceException) as e:
-            print ("/gazebo/unpause_physics service call failed")
-
-        #print ("action received ", action )
-
-        tempLastObs = np.copy(lastObs)
-        for num, joint in enumerate(action):
-            if joint>0 : 
-                self.publishers[num].publish(tempLastObs[num] + self.minDisplacement)
-                #print (" joiunt number ", num+1, " moves forward")
-                if self.TRAIN: time.sleep(self.actionTime)
-            elif joint<0 : 
-                self.publishers[num].publish(tempLastObs[num] - self.minDisplacement)
-                #print (" joiunt number ", num+1, " moves backward")
-                if self.TRAIN: time.sleep(self.actionTime)
-            else: None
-            #time.sleep(0.05)
-        
-        #print ("action sequence completed!!")
-        
-        def roundOffList(lyst):
-            newLyst = []
-            for i in lyst:
-                newLyst.append(round(i, 2))
-
-            return np.array(newLyst)
 
 
-        data = None
-        stateArms = np.copy(lastObs)
-        state = np.copy(self.lastObservation)
-        while data is None:
-            try:
-                data = rospy.wait_for_message('/joint_states', JointState, timeout=10)
-                data.position = roundOffList(data.position)
-                dataConc = [data.position[0], data.position[1], data.position[3]]
-                if ((np.array(dataConc)<=self.highConcObs).all()) and ((np.array(dataConc)>=self.lowConcObs).all()):
-                    stateArms = np.copy(np.array(data.position))
-                    stateArmsConc = np.copy(np.array(dataConc))
-                    stateConc = np.concatenate((stateArmsConc, goalState), axis=0) # get a random goal every time you reset
-                    state = np.concatenate((stateArmsConc, goalStateFull), axis=0) # get a random goal every time you reset
-                    if (roundOffList(lastObs) != roundOffList(stateArmsConc)).any(): 
-                        moved = True
-                    self.lastObservation = stateConc
-                    self.lastObservationFull = state
-                else:
-                    #print ("received some SHIT data ", dataConc, (np.array(dataConc[0])>=self.lowConc[0]), (np.array(dataConc[1])>=self.lowConc[1]), (np.array(dataConc[2])>=self.lowConc[2]))
-                    #print ("position data received through service ", self.lowConc)
-                    data = None
-                    print ("Bad observation data received STEP" )
-                    badDataFlag = True
-                    for joint in range(3):
-                        self.publishers[joint].publish(self.home[joint]) #homing at every reset
-                    time.sleep(self.homingTime)
-                    #print ("Did I receive any data.position ", (((np.array(data.position)<=self.high).all()) and ((np.array(data.position)>=self.low).all())))
-                    #print ("received some SHIT data", data.position)
-            except:
-                pass
-
-        
-
-        rospy.wait_for_service('/gazebo/pause_physics')
-        try:
-            self.pause()
-        except (rospy.ServiceException) as e:
-            print ("/gazebo/pause_physics service call failed")
-
-
-
-        # to calcualte the reward we need to know the current state as tcp point so use Fk for that
-
-
-        lastObsPose = None
-        while lastObsPose==None:
-            tempJointState = JointState()
-            tempJointState.header.frame_id = self.baseFrame
-            tempJointState.position = [lastObs.tolist()[0], lastObs.tolist()[1], 0, lastObs.tolist()[2], 0, 0, 0]
-            lastObsPose = self.getForwardKinematics(tempJointState)
-            if lastObsPose == None: print ("here is the fuck up in last pose, ", lastObs, lastObs.tolist(), len(lastObs.tolist())) 
-
-        stateArmsPose = None
-        while stateArmsPose==None:
-            tempJointState2 = JointState()
-            tempJointState2.header.frame_id = self.baseFrame
-            tempJointState2.position = [stateArmsConc.tolist()[0], stateArmsConc.tolist()[1], 0, stateArmsConc.tolist()[2], 0, 0, 0]
-            stateArmsPose = self.getForwardKinematics(tempJointState2)
-            if stateArmsPose == None: print ("here is the fuck up in state arms pose, ", stateArmsConc, stateArmsConc.tolist(), len(stateArmsConc.tolist())) 
-
-        goalArmDifferenceLast = LA.norm(np.array([lastObsPose.pose.pose.position.x, lastObsPose.pose.pose.position.y, lastObsPose.pose.pose.position.z]) - np.array([goalState[0], goalState[1], goalState[2]]))
-        goalArmDifference = LA.norm(np.array([stateArmsPose.pose.pose.position.x, stateArmsPose.pose.pose.position.y, stateArmsPose.pose.pose.position.z]) - np.array([goalState[0], goalState[1], goalState[2]]))
-        
-
-        diff = goalArmDifferenceLast - goalArmDifference 
-        #print ("How far from thegoal ", goalArmDifference )
-        reward = (diff*(self.rewScaleFactor*10))/(1+ np.exp(goalArmDifference))
-        #print ("reaward received, ", reward, diff*(self.rewScaleFactor), 1/(1+ np.exp(goalArmDifference))  )
-        #print ("Difference Total ", np.absolute(stateArms - goalState), ( np.absolute(stateArms - goalState) <= self.checkDisplacement).all() )
-        #print(" gooal arm difference :", goalArmDifference)
         if ( goalArmDifference <= (self.minDisplacementPose) ):
             #print ("Difference Total ", np.absolute(stateArms - goalState), ( np.absolute(stateArms - goalState) <= self.checkDisplacement).all() )
             done = True
             reward += self.REWARD*self.rewScaleFactor
-        else: done = False
+            #print ("Dhone dhana dan dan ho gaya ", stateConc)
+        else: 
+            #reward = -self.REWARD
+            done = False
         
 
 
         #print (" REWARD RECEIVED ", reward )
 
-        if self.DATA: return stateConc, reward, done, badDataFlag, moved  # uncomment when generating data though planning
-        elif self.TRAIN: return stateConc, reward, done, {} # uncomment to train through gail
+        if self.DATA: return np.array(state), reward, done, badDataFlag, moved  # when generating data through planning
+        elif self.TRAIN: return np.array(stateConc), reward, done, {} #to train through gail
 
 
     def _reset(self):
@@ -329,18 +335,18 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
         data = None
         state = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
-        stateFull = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
-        #state = None
+        stateFull = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1 , 0.1, 0.1, 0.1]
         while (data is None):
             try:
                 data = rospy.wait_for_message('/joint_states', JointState, timeout=10)
+                gripperPos = self.getGripperPosition(data.position)
                 dataConc = [data.position[0], data.position[1], data.position[3]]
                 if (np.array(dataConc)<=self.highConcObs).all() and (np.array(dataConc)>=self.lowConcObs).all():
                     goalArrayFull = self.getRandomGoal()
-                    state = dataConc + goalArrayFull[:self.lenGoal] # get a random goal every time you reset
-                    stateFull = dataConc + goalArrayFull
-                    
-                    self.lastObservation = state
+                    state = gripperPos + goalArrayFull[:self.lenGoal] # get a random goal every time you reset
+                    stateShort = dataConc + goalArrayFull[:self.lenGoal]
+                    stateFull = dataConc + gripperPos + goalArrayFull
+                    self.lastObservation = stateShort
                     self.lastObservationFull = stateFull
                     print("New Goal received!")
                 else:
