@@ -26,19 +26,31 @@ rewards = []
 def main():
     env = gym.make('GazeboWAMemptyEnv-v0')
     #env.seed()
-    
+    env.DATA = 1
+    env.TRAIN = 0
+    env.BC = 0
+    env.REWARD_TYPE = "sparse"
+    numItr = 500
+    initStateSpace = "random"
 
     env.reset()
     print("Reset!")
     time.sleep(10)
-    while len(actions) < 100:
+    while len(actions) < numItr:
         obs = env.reset()
         print("Reset!")
         print("ITERATION NUMBER ", len(actions))
         goToGoal(env, obs)
 
+    fileName = "data_wam_AOS"
+
+    fileName += "_" + initStateSpace
+
+    fileName += "_" + str(numItr)
+
+    fileName += ".npz"
     
-    np.savez_compressed('data_wam.npz', acs=actions, obs=observations, ep_rets=ep_returns, rews=rewards)
+    np.savez_compressed(fileName, acs=actions, obs=observations, ep_rets=ep_returns, rews=rewards)
  
 
 def getInverseKinematics(env, goalPose): #get joint angles for reaching the goal position
@@ -70,9 +82,9 @@ def actionMapping(env, ac, diff):
 
     for joint in range(len(ac)):
         if ac[joint]==0: 
-            action[joint] = -random.uniform((diff[joint]/5), (diff[joint]/3))
+            action[joint] = -max(random.uniform((diff[joint]/4), (diff[joint]/3)), env.minDisplacement)
         elif ac[joint]==1:
-            action[joint] = random.uniform((diff[joint]/5), (diff[joint]/3))
+            action[joint] = max(random.uniform((diff[joint]/4), (diff[joint]/3)), env.minDisplacement)
 
     return np.array(action)
 
@@ -139,7 +151,7 @@ def goToGoal(env, lastObs):
         lastObs = obsData[:env.lenGoal]
         difference = np.array(lastObs) - np.array(goalPositionConc)
         elapsed_time = time.time() - beginningTime
-        if elapsed_time > env.waitTime: 
+        if elapsed_time > env.waitTime:
             print("exiting from while loop due to TIME")
             break
 
@@ -148,9 +160,9 @@ def goToGoal(env, lastObs):
         actions.append(np.array(episodeAcs))
         observations.append(np.array(episodeObs))
         rewards.append(np.array(episodeRews))
-        print ("total episode return: ", ep_return)
-        print ("total episode actions lenght: ", len(episodeAcs))
-        print ("total episode observation length : ", len(episodeObs))
+        #print ("total episode return: ", ep_return)
+        #print ("total episode actions lenght: ", episodeAcs)
+        #print ("total episode observation length : ", episodeObs)
     else: 
         #print ("OUTSIDE ", (np.absolute(difference) > np.array([env.minDisplacement, env.minDisplacement, env.minDisplacement])))
         print ("done not true still out of the while loop ")

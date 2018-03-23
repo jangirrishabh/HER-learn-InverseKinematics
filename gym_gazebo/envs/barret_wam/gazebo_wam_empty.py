@@ -41,18 +41,20 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
         self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
         self.reset_proxy = rospy.ServiceProxy('/gazebo/reset_simulation', Empty)
+        
         self.minDisplacement = 0.09 #minimum discrete distance by a single action
         self.minDisplacementPose = 0.10 # minimum distance to check for the goal reaching state
         self.baseFrame = 'iri_wam_link_base' 
-        self.waitTime = 6 # time to wait for arm to reach a joint until its considered a bad point
+        self.waitTime = 3 # time to wait for arm to reach a joint until its considered a bad point
         self.homingTime = 0.5 # time given for homing
         self.lenGoal = 3 # goal position list length
-        self.REWARD = 1 # reward received upon reachnig the goal
+        self.REWARD = 0 # reward received upon reachnig the goal
         self.rewScaleFactor = 10 # multiply the rewards by this factor
         self.actionTime = 0.05 #time delay after every published action
         self.DATA = 0
         self.TRAIN = not self.DATA
         self.BC = not self.DATA
+        self.REWARD_TYPE = "dense" #sparse or dense
 
         self.home = np.zeros(4) # what position is the homing
         # self.Xacrohigh = np.array([2.6, 2.0, 2.8, 3.1, 1.24, 1.57, 2.96])
@@ -68,6 +70,9 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
         self.lowConcObs = np.array([-2.6, -1.42, -0.88]) #1, 2, 4
         self.highConcObs = np.array([2.6, 1.42, 3.08])
+
+        #self.samplelow = np.array([-2.4, -1.4, -2.03, -0.68, -4.04, -1.05, -2.08])
+        #self.samplehigh = np.array([2.4, 1.4, 2.03, 2.78, 1.0, 1.05, 2.08])
 
         self.samplelow = np.array([-2.0, -1.0, -2.03, -0.58, -4.04, -1.05, -2.08])
         self.samplehigh = np.array([2.0, 1.0, 2.03, 2.08, 1.0, 1.05, 2.08])
@@ -151,9 +156,18 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
     def _step(self, action):
         #print ("action received before4 clipping ", action )
+        action = action.copy()
         action = np.clip(action, self.action_space.low, self.action_space.high)
         #print ("action received ", action )
 
+        for i in range(len(action)):
+            if action[i] > 0:
+                action[i] = max(action[i], self.minDisplacement)
+            elif action[i] <0:
+                action[i] = -max(np.absolute(action[i]), self.minDisplacement)
+
+
+        #print ("action Augmentedss ", action )
         lastObs = list(self.lastObservation[:self.lenGoal]) 
     
         moved = False
@@ -174,8 +188,8 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
         for num, joint in enumerate(action):
             self.publishers[num].publish(lastObs[num] + joint)
-            if self.TRAIN: time.sleep(self.actionTime)
-
+            
+        if self.TRAIN: time.sleep(self.actionTime)
         
         def roundOffList(lyst):
             newLyst = []
@@ -188,7 +202,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         state = list(self.lastObservationFull)
         while data is None:
             try:
-                data = rospy.wait_for_message('/joint_states', JointState, timeout=10)
+                data = rospy.wait_for_message('/joint_states', JointState, timeout=1)
                 gripperPos = self.getGripperPosition(data.position)
                 dataConc = [data.position[0], data.position[1], data.position[3]]
                 if ((np.array(dataConc)<=self.highConcObs).all()) and ((np.array(dataConc)>=self.lowConcObs).all()):
@@ -241,12 +255,18 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
         diff = goalArmDifferenceLast - goalArmDifference 
         #print ("How far from thegoal ", goalArmDifference )
-        if diff>0 and moved:
-            reward = ((self.rewScaleFactor))/(10*(1+ np.exp(goalArmDifference)))
-        elif diff<0 and moved:
-            reward = -((self.rewScaleFactor))/(10*(1 + np.exp(goalArmDifference)))
-        else:
-            reward = -self.REWARD*self.rewScaleFactor
+
+
+        reward = self.REWARD
+        # if self.REWARD_TYPE == "sparse":
+        #     reward = -self.REWARD
+        # elif self.REWARD_TYPE == "dense":
+        #     if diff>0 and moved:
+        #         reward = (1/(1+ np.exp(goalArmDifference)))
+        #     elif diff<0 and moved:
+        #         reward = -(1/(1+ np.exp(goalArmDifference)))
+        #     else:
+        #         reward = -self.REWARD
 
 
         #print ("reaward received, ", reward)
@@ -272,6 +292,11 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
 
 
         if ( goalArmDifference <= (self.minDisplacementPose*3) ):
+            markerObj.color.r = 0.5
+            markerObj.color.g = 0.5
+            markerObj.color.a = 1.0
+
+        elif ( goalArmDifference <= (self.minDisplacementPose) ):
             markerObj.color.g = 1.0
             markerObj.color.a = 1.0
 
@@ -283,16 +308,20 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         self.pubMarker.publish(markerObj)
 
 
-        if ( goalArmDifference <= (self.minDisplacementPose) ):
-            #print ("Difference Total ", np.absolute(stateArms - goalState), ( np.absolute(stateArms - goalState) <= self.checkDisplacement).all() )
-            done = True
-            reward += self.REWARD*self.rewScaleFactor
-            #print ("Dhone dhana dan dan ho gaya ", stateConc)
-        else: 
-            #reward = -self.REWARD
-            done = False
+        # if ( goalArmDifference <= (self.minDisplacementPose) ):
+        #     #print ("Difference Total ", np.absolute(stateArms - goalState), ( np.absolute(stateArms - goalState) <= self.checkDisplacement).all() )
+        #     done = True
+            
+        #     if self.REWARD_TYPE == "sparse":
+        #         reward = self.REWARD
+        #     elif self.REWARD_TYPE == "dense":
+        #         reward = self.REWARD*self.rewScaleFactor
+        #     #print ("Dhone dhana dan dan ho gaya ", stateConc)
+        # else: 
+        #     #reward = -self.REWARD
+        #     done = False
         
-
+        done = bool(goalArmDifference <= (self.minDisplacementPose))
 
         #print (" REWARD RECEIVED ", reward )
 
@@ -312,7 +341,7 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         #     print ("/gazebo/reset_simulation service call failed")
 
         # Unpause simulation to make observation
-        print("In the reset LOOP")
+        #print("In the reset LOOP")
         rospy.wait_for_service('/gazebo/unpause_physics')
         try:
             #resp_pause = pause.call()
@@ -321,6 +350,16 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
             print ("/gazebo/unpause_physics service call failed")
 
 
+        # rospy.wait_for_service('/iri_wam/controller_manager/list_controllers')
+        # try:
+        #     readController = rospy.ServiceProxy('/iri_wam/controller_manager/list_controllers', Empty)
+        #     control = readController()
+        #     #print (control)
+        #     #onHai = bool(controllers.iri_wam_controller.state == "stopped")
+        # except (rospy.ServiceException) as e:
+        #     print ("Service call failed: %s"%e)
+
+        #if not onHai:
         rospy.wait_for_service('/iri_wam/controller_manager/switch_controller')
         try:
             change_controller = rospy.ServiceProxy('/iri_wam/controller_manager/switch_controller', SwitchController)
@@ -328,17 +367,17 @@ class GazeboWAMemptyEnv(gazebo_env.GazeboEnv):
         except (rospy.ServiceException) as e:
             print ("Service call failed: %s"%e)
 
-
-        # for joint in range(3):
-        #     self.publishers[joint].publish(self.home[joint]) #homing at every reset
-        # time.sleep(self.homingTime)
+        if self.TRAIN:
+            for joint in range(3):
+                self.publishers[joint].publish(self.home[joint]) #homing at every reset
+            time.sleep(self.homingTime)
 
         data = None
         state = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
         stateFull = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1 , 0.1, 0.1, 0.1]
         while (data is None):
             try:
-                data = rospy.wait_for_message('/joint_states', JointState, timeout=10)
+                data = rospy.wait_for_message('/joint_states', JointState, timeout=1)
                 gripperPos = self.getGripperPosition(data.position)
                 dataConc = [data.position[0], data.position[1], data.position[3]]
                 if (np.array(dataConc)<=self.highConcObs).all() and (np.array(dataConc)>=self.lowConcObs).all():
