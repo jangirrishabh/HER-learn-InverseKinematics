@@ -106,6 +106,11 @@ register(
     entry_point='gym_gazebo.envs.barret_wam:GazeboWAMemptyEnv',
 )
 
+register(
+    id='GazeboWAMemptyEnv-v1',
+    entry_point='gym_gazebo.envs.barret_wam:GazeboWAMemptyEnvv1',
+)
+
 # ARIACPickv0Env
 register(
     id='ARIACPick-v0',
