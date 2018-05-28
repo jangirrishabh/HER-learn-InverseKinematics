@@ -21,6 +21,10 @@ from iri_common_drivers_msgs.srv import QueryInverseKinematics
 from iri_common_drivers_msgs.srv import QueryForwardKinematics
 from gazebo_msgs.msg import ModelStates
 
+
+
+""" Data generation for the case of Goal reaching wiht the wam"""
+
 def goal_distance(goal_a, goal_b):
     assert goal_a.shape == goal_b.shape
     return np.linalg.norm(goal_a - goal_b, axis=-1)
