@@ -106,7 +106,7 @@ class GazeboWAMemptyEnvv2(gazebo_env.GazeboEnv):
         self.lowAction = [-1, -1, -1, -1, -1]
         self.highAction = [1, 1, 1, 1, 1]
         self.n_actions = len(self.highAction)
-        self.lenObs = 11
+        self.lenObs = 12
 
         self.lastObservation = None
         self.lastObservationJS = None
@@ -198,7 +198,10 @@ class GazeboWAMemptyEnvv2(gazebo_env.GazeboEnv):
 
 
             sampledGoal.position.x += random.uniform(0.0, 0.25) * np.random.choice([-1, 1], 1)
-            sampledGoal.position.y += random.uniform(0.0, 0.4) * np.random.choice([-1, 1], 1)
+            if np.absolute(sampledGoal.position.x) < 0.1:
+                sampledGoal.position.y += random.uniform(0.15, 0.4) * np.random.choice([-1, 1], 1)
+            else :
+                sampledGoal.position.y += random.uniform(0.0, 0.4) * np.random.choice([-1, 1], 1)
             sampledGoal.position.z += 0.05
 
 
@@ -207,7 +210,7 @@ class GazeboWAMemptyEnvv2(gazebo_env.GazeboEnv):
             sampledGoal.position.y = np.asscalar(np.clip(sampledGoal.position.y, -0.4 , 0.4))
 
             self.goalJS = self.getInverseKinematics(sampledGoal)
-            return np.array([sampledGoal.position.x, sampledGoal.position.y, sampledGoal.position.z])
+            return np.array([sampledGoal.position.x, sampledGoal.position.y, sampledGoal.position.z - 0.03])
         else:
             sampledGoal.position.x = 0.5001911647282589
             sampledGoal.position.y = 0.1004797189877992
@@ -218,7 +221,7 @@ class GazeboWAMemptyEnvv2(gazebo_env.GazeboEnv):
             sampledGoal.orientation.w = -0.00023044483691539005
             sampledGoal.position.z += 0.05 + 1.085
             self.goalJS = self.getInverseKinematics(sampledGoal)
-            return np.array([sampledGoal.position.x, sampledGoal.position.y, sampledGoal.position.z])
+            return np.array([sampledGoal.position.x, sampledGoal.position.y, sampledGoal.position.z -0.03])
 
  
                 
@@ -334,6 +337,7 @@ class GazeboWAMemptyEnvv2(gazebo_env.GazeboEnv):
         obs = np.concatenate([gripperPos, objectPos])
         obs = np.append(obs, gripperOrient)
         obs = np.append(obs, gripperState)
+        obs = np.append(obs, np.linalg.norm(gripperPos - objectPos, axis=-1 ))
 
         return {
             'observation': obs.copy(),
