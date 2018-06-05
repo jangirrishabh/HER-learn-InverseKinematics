@@ -46,7 +46,7 @@ def main():
         #     goToGoal(env, obs)
         #time.sleep(0)
 
-    fileName = "data_wam_single"
+    fileName = "data_wam_double"
 
     fileName += "_" + initStateSpace
 
@@ -89,18 +89,21 @@ def goToGoal(env, lastObs, objPosition):
     episodeInfo = []
     #episodeRews = []    
     obsData = env.lastObservationJS
-    objPositionConc = [objPosition[0], objPosition[1], objPosition[2], objPosition[3]]  #getting the object position as input
+    objPositionConc = [objPosition[0], objPosition[1], objPosition[2], objPosition[3]]  #getting the initial object position as input
     differenceGoal = np.array(obsData) - np.array(goalPositionConc)
     differenceObject = np.array(obsData) - np.array(objPositionConc)
     obsData = lastObs
 
 
-    t = 0
+    #t = 0
     #while np.linalg.norm(difference) > 0.06:
 
 
-    while differenceObject.any()>env.distanceThresholdDemo:
-        t += 1
+    #while differenceObject.any()>env.distanceThresholdDemo:
+    #t += 1
+
+    for _ in range(env._max_episode_steps):
+        
         actionPreferance = np.zeros(len(differenceObject))
         for joint in range(len(differenceObject)):
             if differenceObject[joint] > 0: #backward
@@ -124,7 +127,6 @@ def goToGoal(env, lastObs, objPosition):
 
         obsData = obsDataNew
 
-        if t >= env._max_episode_steps: break
 
     
 
@@ -179,6 +181,14 @@ def goToGoal(env, lastObs, objPosition):
     episodeAcs.append(action)
     episodeInfo.append(info)
     episodeObs.append(obsData)
+
+
+    for i in range(10): 
+        action = np.array([0, -0.005, 0, 0, random.uniform(-1, -0.5)])
+        obsData, _, _, info = env.step(action)
+        episodeAcs.append(action)
+        episodeInfo.append(info)
+        episodeObs.append(obsData)
 
 
     
