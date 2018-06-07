@@ -94,6 +94,9 @@ def goToGoal(env, lastObs, objPosition):
     differenceObject = np.array(obsData) - np.array(objPositionConc)
     obsData = lastObs
 
+    #print("DIFFERENCE GOAL ______ ", differenceGoal)
+
+    #print("DIFFERENCE OBJECT ______ ", differenceObject)
 
     #t = 0
     #while np.linalg.norm(difference) > 0.06:

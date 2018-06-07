@@ -10,7 +10,7 @@ from os import path
 from std_srvs.srv import Empty
 
 
-class GazeboEnv(gym.Env):
+class GazeboEnv(gym.GoalEnv):
     """Superclass for all Gazebo environments.
     """
     metadata = {'render.modes': ['human']}

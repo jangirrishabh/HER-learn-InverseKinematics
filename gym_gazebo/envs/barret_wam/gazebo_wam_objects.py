@@ -62,9 +62,10 @@ class GazeboWAMemptyEnvv2(gazebo_env.GazeboEnv):
         self.publishers[3] = rospy.Publisher('/iri_wam/joint6_position_controller/command', Float64, queue_size=1)
         # self.publishers[6] = rospy.Publisher('/iri_wam/joint7_position_controller/command', Float64, queue_size=5) # discretely publishing motor actions for now
         
-        self.pubMarker = ['marker1', 'marker2']
-        self.pubMarker[0] = rospy.Publisher('/goalPose', Marker, queue_size=1)
-        self.pubMarker[1] = rospy.Publisher('/goalPose', Marker, queue_size=1)
+        self.pubMarker = ['marker1', 'marker2', 'marker3']
+        self.pubMarker[0] = rospy.Publisher('/goalPose0', Marker, queue_size=1)
+        self.pubMarker[1] = rospy.Publisher('/goalPose1', Marker, queue_size=1)
+        self.pubMarker[2] = rospy.Publisher('/goalPose2', Marker, queue_size=1)
 
         self.unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
         #self.pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
@@ -73,14 +74,16 @@ class GazeboWAMemptyEnvv2(gazebo_env.GazeboEnv):
         self.get_state = rospy.ServiceProxy("/gazebo/get_model_state",GetModelState)
         self.get_gripper = rospy.ServiceProxy('/check_grasped', CheckGrasped)
 
-        self.distanceThreshold = 0.09
+
+        self.type = 'train' # 'data'
+        self.distanceThreshold = 0.079
+        self.objectSize = 0.08
         self.distanceThresholdDemo = 0.05
         self.baseFrame = 'iri_wam_link_base'
-        self.homingTime = 0.6 # time given for homing
+        self.homingTime = 0.1 # time given for homing
         self.lenGoal = 3 # goal position list length
-        self._max_episode_steps = 50
+        self._max_episode_steps = 19 + ((self.type == 'train') * 31)
         self.reward_type = 'sparse'
-        self.objModelNum = 1
         self.objectName = {
             "obj1" : 'obs_0', "objFixed" : 'obs_fixed'
         }
@@ -110,7 +113,7 @@ class GazeboWAMemptyEnvv2(gazebo_env.GazeboEnv):
         self.lowAction = [-1, -1, -1, -1, -1]
         self.highAction = [1, 1, 1, 1, 1]
         self.n_actions = len(self.highAction)
-        self.lenObs = 15
+        self.lenObs = 14
 
         self.lastObservation = None
         self.lastObservationJS = None
@@ -173,27 +176,27 @@ class GazeboWAMemptyEnvv2(gazebo_env.GazeboEnv):
         return [np.array([tempPoseFK.pose.pose.position.x, tempPoseFK.pose.pose.position.y, tempPoseFK.pose.pose.position.z]), np.array([tempPoseFK.pose.pose.orientation.x, tempPoseFK.pose.pose.orientation.y, tempPoseFK.pose.pose.orientation.z, tempPoseFK.pose.pose.orientation.w ])]
 
 
-    def _sample_goal(self): #sample from reachable positions
-        frame_ID = self.baseFrame
-        tempPoseFK = None
+    # def _sample_goal(self): #sample from reachable positions
+    #     frame_ID = self.baseFrame
+    #     tempPoseFK = None
 
-        while tempPoseFK==None:
-            tempPosition = []
-            for joint in range(6):
-                tempPosition.append(random.uniform(self.samplelow[joint], self.samplehigh[joint]))
+    #     while tempPoseFK==None:
+    #         tempPosition = []
+    #         for joint in range(6):
+    #             tempPosition.append(random.uniform(self.samplelow[joint], self.samplehigh[joint]))
 
-            tempPosition.append(0)
-            tempPosition[2] = 0
-            tempPosition[4] = 0
-            tempJointState = JointState()
-            tempJointState.header.frame_id = self.baseFrame
-            tempJointState.position = tempPosition
+    #         tempPosition.append(0)
+    #         tempPosition[2] = 0
+    #         tempPosition[4] = 0
+    #         tempJointState = JointState()
+    #         tempJointState.header.frame_id = self.baseFrame
+    #         tempJointState.position = tempPosition
 
-            self.goalJS = tempPosition # goal sampled in the joint space represenatation
-            tempPoseFK = self.getForwardKinematics(tempJointState)
-            if tempPoseFK!=None:
-                tempTemp = [tempPoseFK.pose.pose.position.x, tempPoseFK.pose.pose.position.y, tempPoseFK.pose.pose.position.z]
-                return np.array(tempTemp)
+    #         self.goalJS = tempPosition # goal sampled in the joint space represenatation
+    #         tempPoseFK = self.getForwardKinematics(tempJointState)
+    #         if tempPoseFK!=None:
+    #             tempTemp = [tempPoseFK.pose.pose.position.x, tempPoseFK.pose.pose.position.y, tempPoseFK.pose.pose.position.z]
+    #             return np.array(tempTemp)
 
     def sample_goal_onTable(self): #sample from reachable positions
 
@@ -201,20 +204,20 @@ class GazeboWAMemptyEnvv2(gazebo_env.GazeboEnv):
             sampledGoal = self.objInitial
 
 
-            sampledGoal.position.x += random.uniform(0.0, 0.3) * np.random.choice([-1, 1], 1)
-            if np.absolute(sampledGoal.position.x) < 0.2:
-                sampledGoal.position.y += random.uniform(0.2, 0.4) * np.random.choice([-1, 1], 1)
+            sampledGoal.position.x += random.uniform(0.1, 0.3) * np.random.choice([-1, 1], 1)
+            if np.absolute(sampledGoal.position.x) < 0.25:
+                sampledGoal.position.y += random.uniform(0.25, 0.4) * np.random.choice([-1, 1], 1)
             else :
-                sampledGoal.position.y += random.uniform(0.1, 0.4) * np.random.choice([-1, 1], 1)
-            sampledGoal.position.z += 0.065 + 0.15  # goal for arm
+                sampledGoal.position.y += random.uniform(0.15, 0.4) * np.random.choice([-1, 1], 1)
+            sampledGoal.position.z += 0.15 + self.objectSize # goal for arm
 
             
 
             sampledGoal.position.x = np.asscalar(np.clip(sampledGoal.position.x, 0.3, 0.65))
             sampledGoal.position.y = np.asscalar(np.clip(sampledGoal.position.y, -0.4 , 0.4))
 
-            self.goalJS = self.getInverseKinematics(sampledGoal)
-            return np.array([sampledGoal.position.x, sampledGoal.position.y, sampledGoal.position.z - 0.15 ]) # actual goal
+            if self.type == 'data' : self.goalJS = self.getInverseKinematics(sampledGoal)
+            return np.array([sampledGoal.position.x, sampledGoal.position.y, sampledGoal.position.z - 0.15 - self.objectSize, sampledGoal.position.x, sampledGoal.position.y, sampledGoal.position.z  - 0.15 ]) # actual goal
         else:
             sampledGoal.position.x = 0.5001911647282589
             sampledGoal.position.y = 0.1004797189877992
@@ -223,9 +226,42 @@ class GazeboWAMemptyEnvv2(gazebo_env.GazeboEnv):
             sampledGoal.orientation.y = 0.99998892605584
             sampledGoal.orientation.z = 9.419015715062839e-06
             sampledGoal.orientation.w = -0.00023044483691539005
-            sampledGoal.position.z += 0.065 + 1.075 + 0.15
-            self.goalJS = self.getInverseKinematics(sampledGoal)
-            return np.array([sampledGoal.position.x, sampledGoal.position.y, sampledGoal.position.z - 0.15])
+            sampledGoal.position.z += 1.075 + 0.15 + self.objectSize # goal for arm
+            if self.type == 'data' : self.goalJS = self.getInverseKinematics(sampledGoal)
+            return np.array([sampledGoal.position.x, sampledGoal.position.y, sampledGoal.position.z - 0.15 - self.objectSize, sampledGoal.position.x, sampledGoal.position.y, sampledGoal.position.z  - 0.15 ])
+
+
+    # def sample_fixed_block_pos(self): #sample from reachable positions
+
+    #     if self.objInitial != None:
+    #         sampledGoal = self.objInitial
+
+
+    #         sampledGoal.position.x += random.uniform(0.0, 0.3) * np.random.choice([-1, 1], 1)
+    #         if np.absolute(sampledGoal.position.x) < 0.2:
+    #             sampledGoal.position.y += random.uniform(0.2, 0.4) * np.random.choice([-1, 1], 1)
+    #         else :
+    #             sampledGoal.position.y += random.uniform(0.1, 0.4) * np.random.choice([-1, 1], 1)
+    #         #sampledGoal.position.z += 0.065   # goal for arm
+
+            
+
+    #         sampledGoal.position.x = np.asscalar(np.clip(sampledGoal.position.x, 0.3, 0.65))
+    #         sampledGoal.position.y = np.asscalar(np.clip(sampledGoal.position.y, -0.4 , 0.4))
+
+    #         #self.goalJS = self.getInverseKinematics(sampledGoal)
+    #         return np.array([sampledGoal.position.x, sampledGoal.position.y, sampledGoal.position.z ]) # actual goal
+    #     else:
+    #         sampledGoal.position.x = 0.5001911647282589
+    #         sampledGoal.position.y = 0.1004797189877992
+    #         sampledGoal.position.z = -0.21252162794043228
+    #         sampledGoal.orientation.x = 0.00470048637345294
+    #         sampledGoal.orientation.y = 0.99998892605584
+    #         sampledGoal.orientation.z = 9.419015715062839e-06
+    #         sampledGoal.orientation.w = -0.00023044483691539005
+    #         sampledGoal.position.z += 1.075 
+    #         #self.goalJS = self.getInverseKinematics(sampledGoal)
+    #         return np.array([sampledGoal.position.x, sampledGoal.position.y, sampledGoal.position.z - 0.15])
 
  
                 
@@ -236,28 +272,27 @@ class GazeboWAMemptyEnvv2(gazebo_env.GazeboEnv):
 
     def compute_reward_HER(self, achieved_goal, desired_goal, info):
         # Compute distance between goal and the achieved goal.
-        reward = np.zeros(achieved_goal.shape[0])
+        reward = -np.ones(achieved_goal.shape[0])
         for x in range(achieved_goal.shape[0]):
             d = goal_distance(achieved_goal[x][:3], desired_goal[x][:3])
-            #d2 = goal_distance(achieved_goal[x][:3], desired_goal[x][3:])
-            #reward[x] = -(d > self.distanceThreshold and (d2 <= 0.08)).astype(np.float32)
-            reward[x] = -(d > self.distanceThreshold).astype(np.float32)
+            d2 = goal_distance(achieved_goal[x][3:], desired_goal[x][3:])
+            reward[x] = -(d > self.distanceThreshold or d2 > self.distanceThreshold).astype(np.float32)
     
         return reward
 
     def _is_success(self, achieved_goal, desired_goal):
-        d = goal_distance(achieved_goal[:3], desired_goal[:3])
-        #d2 = goal_distance(achieved_goal[:3], desired_goal[3:])
+        d = goal_distance(achieved_goal[:3], desired_goal[:3]) #fixed block
+        d2 = goal_distance(achieved_goal[3:], desired_goal[3:])
         #return (d < self.distanceThreshold and (d2 <= 0.8)).astype(np.float32)
-        return (d < self.distanceThreshold).astype(np.float32)
+        return (d < self.distanceThreshold and d2 < self.distanceThreshold ).astype(np.float32)
 
     def compute_reward(self, achieved_goal, desired_goal, info):
         # Compute distance between goal and the achieved goal.
-        d = goal_distance(achieved_goal[:3], desired_goal[:3])
-        #d2 = goal_distance(achieved_goal[3:], desired_goal[3:])
+        d = goal_distance(achieved_goal[:3], desired_goal[:3]) #fixed block
+        d2 = goal_distance(achieved_goal[3:], desired_goal[3:])
 
         if self.reward_type == 'sparse':
-            return -(d > self.distanceThreshold).astype(np.float32)
+            return -(d > self.distanceThreshold or d2 > self.distanceThreshold ).astype(np.float32)
         else:
             return -d
 
@@ -289,7 +324,8 @@ class GazeboWAMemptyEnvv2(gazebo_env.GazeboEnv):
         done = bool(self._is_success(obs['achieved_goal'], obs['desired_goal'] ))
         #done = False
 
-        self.setMarkers(goal_distance(obs['achieved_goal'][:3], obs['desired_goal'][:3] ), self.goal.copy(), 0)        
+        self.setMarkers(goal_distance(obs['achieved_goal'][3:], obs['desired_goal'][3:] ), self.goal[3:].copy(), 0)
+        self.setMarkers(goal_distance(obs['achieved_goal'][:3], obs['desired_goal'][:3] ), self.goal[:3].copy(), 2)        
 
         # rospy.wait_for_service('/gazebo/pause_physics')
         # try:
@@ -330,13 +366,17 @@ class GazeboWAMemptyEnvv2(gazebo_env.GazeboEnv):
         gripperPos = self.lastObservation
         gripperOrient = self.lastObservationOrient
         gripperState = 0
+        obs = None
+        
 
         while data is None:
             try:
-                data = rospy.wait_for_message('/joint_states', JointState, timeout=1)
-                objectPos = self.get_object_position(self.objectName['obj1'])
-                self.setMarkers( 1.0, objectPos, 1)
                 fixedObjectPos = self.get_object_position(self.objectName['objFixed'])
+                objectPos = self.get_object_position(self.objectName['obj1'])
+                data = rospy.wait_for_message('/joint_states', JointState, timeout=1)
+                
+                self.setMarkers( 1.0, objectPos, 1)
+
                 [gripperPos, gripperOrient] = self.getArmPosition(data.position) #cartesian coordinates of the gripper
                 dataConc = np.array([data.position[0], data.position[1], data.position[3], data.position[5]]) # joint space coordinates of the robotic arm 1, 2, 4, 6
                 gripperState = self.get_gripper_state()
@@ -356,19 +396,19 @@ class GazeboWAMemptyEnvv2(gazebo_env.GazeboEnv):
                 pass
 
 
-        obs = np.concatenate([gripperPos, objectPos])
-        obs = np.append(obs, gripperOrient)
+        obs = np.concatenate([gripperPos, gripperOrient])
         obs = np.append(obs, gripperState)
-        obs = np.append(obs, np.linalg.norm(gripperPos - objectPos, axis=-1 ))
-        #print(" DISTANCE ", np.linalg.norm(gripperPos - objectPos, axis=-1 ))
         obs = np.append(obs, fixedObjectPos)
-        self.observations = obs.copy()
+        obs = np.append(obs, objectPos)
+        #obs = np.append(obs, np.linalg.norm(gripperPos - objectPos, axis=-1 ))
+        #print(" DISTANCE ", np.linalg.norm(gripperPos - objectPos, axis=-1 ))
+        
 
         return {
             'observation': obs.copy(),
             #'achieved_goal': np.concatenate([objectPos, fixedObjectPos]),
             #'desired_goal': np.concatenate([self.goal , fixedObjectPos]),
-            'achieved_goal': objectPos.copy(),
+            'achieved_goal': np.concatenate([fixedObjectPos, objectPos]),
             'desired_goal': self.goal.copy(),
         }
         
@@ -382,6 +422,10 @@ class GazeboWAMemptyEnvv2(gazebo_env.GazeboEnv):
             objectPos = np.array([temp.pose.position.x, temp.pose.position.y, temp.pose.position.z])
 
             if objectName == 'obs_0' : self.object = temp.pose
+            # if objectName == 'obs_fixed' :
+            #     temp.pose.position.z += 0.065 + 0.15
+            #     if self.type == 'data' : self.goalJS = self.getInverseKinematics(temp.pose)
+            #     self.goal = np.array([temp.pose.position.x, temp.pose.position.y, temp.pose.position.z - 0.15])
             return objectPos
 
         except (rospy.ServiceException) as e:
@@ -483,9 +527,14 @@ class GazeboWAMemptyEnvv2(gazebo_env.GazeboEnv):
     
         self.get_object_position(self.objectName['obj1'])
         self.objInitial = self.object
-        self.objInitialJS = self.getInverseKinematics(self.objInitial)
+        self.objInitialJS = self.getInverseKinematics(self.objInitial) # reference for sampling the goal
 
         self.goal = self.sample_goal_onTable().copy() # get a random goal every time you reset
+
+        #fixedBlockPosition = self.sample_fixed_block_pos().copy() # sample a position for the fixed block, the goalwould be on top of this block all the time
+
+        #self.goal = fixedBlockPosition
+
 
         rospy.wait_for_service('/gazebo/set_model_state')
         try:
@@ -495,6 +544,8 @@ class GazeboWAMemptyEnvv2(gazebo_env.GazeboEnv):
             state = ModelState()
             state.model_name = self.objectName['objFixed']
             #temp.reference_frame = "world"
+            #pose.position.x = self.goal[0]
+            #pose.position.y = self.goal[1]
             pose.position.x = self.goal[0]
             pose.position.y = self.goal[1]
             pose.position.z = 0.9
@@ -584,9 +635,13 @@ class GazeboWAMemptyEnvv2(gazebo_env.GazeboEnv):
         markerObj.pose.position = pointToPose
         markerObj.pose.orientation.w = 1.0
 
-        markerObj.scale.x = 0.065/2 + (0.09 - 0.065/2) * ( 1 - objID )
-        markerObj.scale.y = 0.065/2 + (0.09 - 0.065/2) * ( 1 - objID )
-        markerObj.scale.z = 0.065/2 + (0.09 - 0.065/2) * ( 1 - objID )
+        # markerObj.scale.x = self.objectSize/2 + (self.distanceThreshold - self.objectSize/2) * ( 1 - objID )
+        # markerObj.scale.y = self.objectSize/2 + (self.distanceThreshold - self.objectSize/2) * ( 1 - objID )
+        # markerObj.scale.z = self.objectSize/2 + (self.distanceThreshold - self.objectSize/2) * ( 1 - objID )
+
+        markerObj.scale.x = self.distanceThreshold
+        markerObj.scale.y = self.distanceThreshold
+        markerObj.scale.z = self.distanceThreshold
 
 
 
