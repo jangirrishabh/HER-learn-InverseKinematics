@@ -10,15 +10,15 @@ from os import path
 from std_srvs.srv import Empty
 
 
-class GazeboEnv(gym.Env):
+class GazeboEnv(gym.GoalEnv):
     """Superclass for all Gazebo environments.
     """
     metadata = {'render.modes': ['human']}
 
     def __init__(self, launchfile):
 
-        #port = os.environ["ROS_PORT_SIM"] # export ROS_PORT_SIM=11311 default 
-        port='11311'
+        port = os.environ["ROS_PORT_SIM"] # export ROS_PORT_SIM=11311 default 
+        #port='11311'
         #start roscore
         subprocess.Popen(["roscore", "-p", port])
         time.sleep(1)
@@ -39,18 +39,18 @@ class GazeboEnv(gym.Env):
 
         self.gzclient_pid = 0
 
-    def _step(self, action):
+    def step(self, action):
 
         # Implement this method in every subclass
         # Perform a step in gazebo. E.g. move the robot
         raise NotImplementedError
 
-    def _reset(self):
+    def reset(self):
 
         # Implemented in subclass
         raise NotImplementedError
 
-    def _render(self, mode="human", close=False):
+    def render(self, mode="human", close=False):
 
         if close:
             tmp = os.popen("ps -Af").read()
@@ -69,7 +69,7 @@ class GazeboEnv(gym.Env):
         else:
             self.gzclient_pid = 0
 
-    def _close(self):
+    def close(self):
 
         # Kill gzclient, gzserver and roscore
         tmp = os.popen("ps -Af").read()
@@ -90,13 +90,13 @@ class GazeboEnv(gym.Env):
         if (gzclient_count or gzserver_count or roscore_count or rosmaster_count >0):
             os.wait()
 
-    def _configure(self):
+    def configure(self):
 
         # TODO
         # From OpenAI API: Provides runtime configuration to the enviroment
         # Maybe set the Real Time Factor?
         pass
-    def _seed(self):
+    def seed(self):
 
         # TODO
         # From OpenAI API: Sets the seed for this env's random number generator(s)
